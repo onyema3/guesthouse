@@ -1,0 +1,735 @@
+/* GuestHouse Manager – Public Styles */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+.ghm-public-wrap { font-family: 'DM Sans', sans-serif; max-width: 960px; margin: 0 auto; }
+
+/* ----- Booking Form ----- */
+.ghm-booking-form-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 32px; box-shadow: 0 4px 32px rgba(0,0,0,.08); }
+.ghm-booking-form-wrap h2 { font-family: 'Playfair Display', serif; font-size: 24px; color: #1a1a2e; margin: 0 0 24px; }
+.ghm-bform-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.ghm-bform-field { display: flex; flex-direction: column; gap: 6px; }
+.ghm-bform-field.span-2 { grid-column: span 2; }
+.ghm-bform-field label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: #6b7280; }
+.ghm-bform-field input,
+.ghm-bform-field select,
+.ghm-bform-field textarea { border: 1.5px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none; transition: border-color .2s; color: #1a1a2e; background: #fafafa; }
+.ghm-bform-field input:focus,
+.ghm-bform-field select:focus,
+.ghm-bform-field textarea:focus { border-color: #c9a84c; background: #fff; }
+.ghm-bform-submit { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg,#c9a84c,#e8c97a); color: #1a1a2e; font-weight: 700; font-size: 15px; padding: 13px 32px; border-radius: 9px; border: none; cursor: pointer; transition: all .2s; margin-top: 8px; }
+.ghm-bform-submit:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(201,168,76,.4); }
+.ghm-bform-submit:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+.ghm-amount-preview { background: linear-gradient(135deg,#1a1a2e,#2a2f42); color: #fff; border-radius: 9px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.ghm-amount-preview .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,.6); }
+.ghm-amount-preview .value { font-size: 24px; font-weight: 700; color: #e8c97a; }
+.ghm-form-section-divider { border: none; border-top: 1.5px solid #f3f4f6; margin: 20px 0; }
+.ghm-form-steps { display: flex; gap: 0; margin-bottom: 28px; }
+.ghm-form-step { flex: 1; text-align: center; padding: 10px; border-bottom: 2px solid #e5e7eb; color: #9ca3af; font-size: 13px; font-weight: 500; transition: all .2s; }
+.ghm-form-step.active { border-bottom-color: #c9a84c; color: #c9a84c; font-weight: 600; }
+.ghm-form-step.done { border-bottom-color: #3ecf8e; color: #3ecf8e; }
+
+/* ----- Rooms List ----- */
+.ghm-rooms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 20px; }
+.ghm-room-pub-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; transition: all .25s; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+.ghm-room-pub-card:hover { transform: translateY(-3px); box-shadow: 0 8px 32px rgba(0,0,0,.12); border-color: #c9a84c; }
+.ghm-room-pub-card .card-img { height: 160px; background: linear-gradient(135deg,#1a1a2e 0%,#2a3055 100%); display: flex; align-items: center; justify-content: center; color: #c9a84c; font-size: 48px; }
+.ghm-room-pub-card .card-body { padding: 18px 20px; }
+.ghm-room-pub-card .card-type { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; margin-bottom: 4px; }
+.ghm-room-pub-card .card-name { font-family: 'Playfair Display', serif; font-size: 18px; color: #1a1a2e; margin-bottom: 10px; }
+.ghm-room-pub-card .card-feats { display: flex; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.ghm-room-pub-card .card-feats span { font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 4px; }
+.ghm-room-pub-card .card-amenities-pub { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.ghm-room-pub-card .card-amenities-pub span { background: #f3f4f6; border-radius: 4px; padding: 2px 8px; font-size: 11px; color: #6b7280; }
+.ghm-room-pub-card .card-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid #f3f4f6; }
+.ghm-room-pub-card .card-price { font-size: 22px; font-weight: 700; color: #c9a84c; }
+.ghm-room-pub-card .card-price small { font-size: 12px; color: #9ca3af; font-weight: 400; }
+.ghm-room-pub-card .card-book-btn { background: #1a1a2e; color: #fff; border: none; border-radius: 7px; padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer; transition: background .2s; font-family: 'DM Sans', sans-serif; text-decoration: none; display: inline-block; }
+.ghm-room-pub-card .card-book-btn:hover { background: #c9a84c; color: #1a1a2e; }
+
+/* ----- Confirmation ----- */
+.ghm-confirmation-wrap { max-width: 580px; margin: 0 auto; text-align: center; }
+.ghm-confirmation-icon { width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg,#3ecf8e,#22c55e); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 36px; color: #fff; }
+.ghm-confirmation-wrap h2 { font-family: 'Playfair Display', serif; font-size: 28px; color: #1a1a2e; margin-bottom: 8px; }
+.ghm-confirmation-wrap p { color: #6b7280; margin-bottom: 24px; }
+.ghm-conf-ref { background: linear-gradient(135deg,#1a1a2e,#2a3055); color: #e8c97a; font-size: 22px; font-weight: 700; letter-spacing: 2px; padding: 14px 28px; border-radius: 10px; display: inline-block; margin-bottom: 24px; font-family: monospace; }
+.ghm-conf-details { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; text-align: left; margin-bottom: 24px; }
+.ghm-conf-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
+.ghm-conf-row:last-child { border-bottom: none; }
+.ghm-conf-row .conf-label { color: #9ca3af; }
+.ghm-conf-row .conf-value { font-weight: 600; color: #1a1a2e; }
+
+/* ----- Alerts ----- */
+.ghm-alert { padding: 14px 18px; border-radius: 8px; font-size: 14px; margin: 12px 0; display: flex; align-items: center; gap: 10px; }
+.ghm-alert.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+.ghm-alert.error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+.ghm-alert.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+
+/* Spinner */
+.ghm-pub-spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(26,26,46,.2); border-top-color: #c9a84c; border-radius: 50%; animation: ghm-spin .7s linear infinite; }
+@keyframes ghm-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+  .ghm-bform-grid { grid-template-columns: 1fr; }
+  .ghm-bform-field.span-2 { grid-column: span 1; }
+  .ghm-booking-form-wrap { padding: 20px; }
+  .ghm-rooms-grid { grid-template-columns: 1fr; }
+}
+
+/* ================================================================
+   Paystack Payment Options
+================================================================ */
+
+/* Summary box on step 3 */
+.ghm-booking-summary-box {
+  background: #f9fafb;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+/* Payment method wrapper */
+.ghm-payment-method-wrap { margin-bottom: 22px; }
+.ghm-payment-method-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #6b7280;
+  margin: 0 0 12px;
+}
+
+/* Payment options */
+.ghm-payment-options { display: flex; flex-direction: column; gap: 10px; }
+
+.ghm-pay-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all .2s;
+  background: #fff;
+  position: relative;
+}
+.ghm-pay-option:hover { border-color: #c9a84c; background: #fffdf5; }
+.ghm-pay-option--selected,
+.ghm-pay-option input:checked ~ * { border-color: #00C3F7; background: #f0fdff; }
+.ghm-pay-option--selected { border-color: #00C3F7 !important; background: #f0fdff !important; }
+
+/* Hide the native radio visually but keep it accessible */
+.ghm-pay-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+/* Custom radio dot */
+.ghm-pay-option::after {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border: 2px solid #d1d5db;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: all .2s;
+}
+.ghm-pay-option--selected::after {
+  border-color: #00C3F7;
+  background: #00C3F7;
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+.ghm-pay-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.ghm-pay-details { flex: 1; }
+.ghm-pay-details strong { display: block; font-size: 14px; color: #111827; font-weight: 600; }
+.ghm-pay-details small  { display: block; font-size: 12px; color: #6b7280; margin-top: 2px; }
+
+.ghm-pay-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: #ecfdf5;
+  color: #059669;
+  padding: 3px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+/* Terms checkbox */
+.ghm-terms-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: #6b7280;
+  cursor: pointer;
+  margin-top: 16px;
+  margin-bottom: 0;
+  line-height: 1.5;
+}
+.ghm-terms-check input {
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: #c9a84c;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* Paystack-themed submit button */
+.ghm-bform-submit--paystack {
+  background: linear-gradient(135deg, #00C3F7, #0099CC) !important;
+  color: #fff !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ghm-bform-submit--paystack:hover {
+  box-shadow: 0 6px 20px rgba(0,195,247,.4) !important;
+  transform: translateY(-2px);
+}
+
+/* Paystack confirmation icon */
+.ghm-confirmation-icon--paystack {
+  background: linear-gradient(135deg, #00C3F7, #0099CC) !important;
+}
+
+/* Confirmation page tweaks */
+.ghm-conf-row .conf-value strong { font-size: inherit; }
+
+@media (max-width: 480px) {
+  .ghm-pay-option { padding: 12px 14px; gap: 10px; }
+  .ghm-pay-badge  { display: none; }
+}
+
+/* ================================================================
+   Discount Code Section
+================================================================ */
+.ghm-discount-section {
+  margin: 16px 0;
+  padding: 16px;
+  background: #f9fafb;
+  border: 1.5px dashed #e5e7eb;
+  border-radius: 10px;
+}
+.ghm-discount-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ghm-discount-label:hover { color: #c9a84c; }
+.ghm-discount-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ghm-discount-input-row input {
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+.ghm-discount-result {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  display: none;
+}
+.ghm-discount-result.success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+.ghm-discount-result.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+/* ================================================================
+   Waitlist Form
+================================================================ */
+.ghm-waitlist-wrap {
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 28px;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.ghm-waitlist-wrap h3 {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px;
+  color: #1a1a2e;
+  margin: 0 0 6px;
+}
+.ghm-waitlist-wrap p.subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 20px;
+}
+
+
+
+/* ================================================================
+   Rooms List — Refreshed UI ([ghm_rooms_list])
+================================================================ */
+.ghm-rl { max-width: 1200px; }
+
+/* Header */
+.ghm-rl-header {
+  margin: 0 0 22px;
+  padding: 0;
+}
+.ghm-rl-eyebrow {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #c9a84c;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.ghm-rl-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 30px;
+  line-height: 1.15;
+  color: #1a1a2e;
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+.ghm-rl-subtitle {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* Toolbar */
+.ghm-rl-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px;
+  margin: 0 0 22px;
+  background: #fff;
+  border: 1px solid #eef0f3;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(15, 17, 23, .04);
+}
+.ghm-rl-search {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 200px;
+}
+.ghm-rl-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  opacity: .6;
+  pointer-events: none;
+}
+.ghm-rl-search input[type="search"] {
+  width: 100%;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px 12px 10px 36px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #1a1a2e;
+  background: #fafafa;
+  outline: none;
+  transition: border-color .2s, background .2s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.ghm-rl-search input[type="search"]:focus {
+  border-color: #c9a84c;
+  background: #fff;
+}
+
+.ghm-rl-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ghm-rl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f3f4f6;
+  border: 1px solid transparent;
+  color: #374151;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+  font-family: inherit;
+}
+.ghm-rl-pill:hover {
+  background: #fff7e0;
+  color: #1a1a2e;
+}
+.ghm-rl-pill.is-active {
+  background: #1a1a2e;
+  color: #e8c97a;
+  border-color: #1a1a2e;
+}
+.ghm-rl-pill-count {
+  background: rgba(255,255,255,.18);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+.ghm-rl-pill:not(.is-active) .ghm-rl-pill-count {
+  background: rgba(26,26,46,.08);
+  color: #6b7280;
+}
+
+.ghm-rl-sort select {
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 9px 32px 9px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  color: #1a1a2e;
+  background: #fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 12px center;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+  transition: border-color .2s;
+}
+.ghm-rl-sort select:focus { border-color: #c9a84c; }
+
+/* Grid */
+.ghm-rl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 22px;
+}
+
+/* Card */
+.ghm-rl-card {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #eef0f3;
+  border-radius: 16px;
+  overflow: hidden;
+  transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  box-shadow: 0 2px 12px rgba(15, 17, 23, .05);
+  position: relative;
+}
+.ghm-rl-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 38px rgba(15, 17, 23, .12);
+  border-color: #e8d8a8;
+}
+.ghm-rl-card.is-unavailable {
+  opacity: .82;
+}
+.ghm-rl-card.is-unavailable:hover {
+  transform: none;
+  border-color: #eef0f3;
+  box-shadow: 0 2px 12px rgba(15, 17, 23, .05);
+}
+
+/* Media (gradient banner) */
+.ghm-rl-media {
+  position: relative;
+  height: 170px;
+  background:
+    radial-gradient(1100px 220px at 110% -20%, rgba(232, 201, 122, .35), transparent 60%),
+    radial-gradient(800px 220px at -10% 120%, rgba(96, 165, 250, .25), transparent 65%),
+    linear-gradient(135deg, #1a1a2e 0%, #2a3055 60%, #3a3f6e 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c9a84c;
+  font-size: 64px;
+  overflow: hidden;
+}
+.ghm-rl-media::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(45deg, rgba(255,255,255,.04) 0 2px, transparent 2px 8px);
+  pointer-events: none;
+}
+.ghm-rl-media-icon {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, .35);
+}
+
+/* Type badge (top-left) */
+.ghm-rl-type-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: rgba(255, 255, 255, .92);
+  color: #1a1a2e;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 999px;
+  z-index: 2;
+  backdrop-filter: blur(4px);
+}
+
+/* Status badge (top-right; only when not available) */
+.ghm-rl-status-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(239, 68, 68, .95);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 999px;
+  z-index: 2;
+}
+
+/* Body */
+.ghm-rl-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 18px 20px 20px;
+}
+.ghm-rl-card-head {
+  margin-bottom: 10px;
+}
+.ghm-rl-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 19px;
+  line-height: 1.25;
+  color: #1a1a2e;
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+.ghm-rl-meta {
+  font-size: 12px;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ghm-rl-meta-dot { opacity: .7; }
+
+.ghm-rl-desc {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #4b5563;
+  margin: 0 0 14px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ghm-rl-feats {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: #6b7280;
+}
+.ghm-rl-feats li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.ghm-rl-feat-ico {
+  font-size: 14px;
+}
+
+.ghm-rl-amenities {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: #fafaf7;
+  border: 1px dashed #ecdfb6;
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 14px;
+  font-size: 12.5px;
+  color: #4b5563;
+}
+.ghm-rl-amenities li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.3;
+}
+.ghm-rl-check {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(62, 207, 142, .15);
+  color: #1f9d6c;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+}
+.ghm-rl-amen-more {
+  color: #c9a84c;
+  font-weight: 600;
+}
+
+/* Footer */
+.ghm-rl-foot {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ghm-rl-price {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.ghm-rl-price-amount {
+  font-family: 'Playfair Display', serif;
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a1a2e;
+  letter-spacing: -.01em;
+}
+.ghm-rl-price-unit {
+  font-size: 12px;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.ghm-rl-book-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #1a1a2e, #2a3055);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+  font-family: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ghm-rl-book-btn:hover {
+  background: linear-gradient(135deg, #c9a84c, #e8c97a);
+  color: #1a1a2e;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(201, 168, 76, .35);
+}
+.ghm-rl-arrow { transition: transform .2s; }
+.ghm-rl-book-btn:hover .ghm-rl-arrow { transform: translateX(3px); }
+
+.ghm-rl-unavail {
+  font-size: 12px;
+  color: #ef4444;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+
+/* Empty / No-results states */
+.ghm-rl-empty,
+.ghm-rl-noresults {
+  text-align: center;
+  padding: 56px 20px;
+  background: #fff;
+  border: 1px dashed #e5e7eb;
+  border-radius: 16px;
+  color: #6b7280;
+}
+.ghm-rl-empty h3,
+.ghm-rl-noresults h3 {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px;
+  color: #1a1a2e;
+  margin: 0 0 6px;
+}
+.ghm-rl-empty p,
+.ghm-rl-noresults p {
+  margin: 0;
+  font-size: 14px;
+}
+.ghm-rl-empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: .9;
+}
+.ghm-rl-noresults { margin-top: 18px; }
+
+/* Mobile */
+@media (max-width: 720px) {
+  .ghm-rl-title { font-size: 24px; }
+  .ghm-rl-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .ghm-rl-search,
+  .ghm-rl-sort,
+  .ghm-rl-sort select { width: 100%; }
+  .ghm-rl-pills { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
+  .ghm-rl-pill { white-space: nowrap; }
+  .ghm-rl-grid { grid-template-columns: 1fr; gap: 16px; }
+  .ghm-rl-amenities { grid-template-columns: 1fr; }
+  .ghm-rl-media { height: 140px; font-size: 54px; }
+  .ghm-rl-foot { flex-wrap: wrap; }
+}

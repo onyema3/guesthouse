@@ -1,0 +1,125 @@
+/* GuestHouse Manager – Guest Portal CSS */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+.ghm-portal-wrap { font-family:'DM Sans',sans-serif; max-width:760px; margin:0 auto; padding:0 0 60px; }
+
+/* ─── Login Card ─────────────────────────────────────────────── */
+.ghm-portal-login-card { background:#fff; border:1.5px solid #e5e7eb; border-radius:16px; padding:40px; max-width:440px; margin:40px auto; box-shadow:0 8px 40px rgba(0,0,0,.08); }
+.ghm-portal-logo { text-align:center; margin-bottom:28px; }
+.ghm-portal-logo span { font-size:48px; display:block; margin-bottom:10px; }
+.ghm-portal-logo h1 { font-family:'Playfair Display',serif; font-size:22px; color:#1a1a2e; margin:0 0 4px; }
+.ghm-portal-logo p  { font-size:13px; color:#9ca3af; margin:0; }
+.ghm-portal-hint { font-size:12px; color:#9ca3af; text-align:center; margin-top:16px; line-height:1.6; }
+
+/* ─── Header ─────────────────────────────────────────────────── */
+.ghm-portal-header { display:flex; align-items:center; justify-content:space-between; padding:20px 0 16px; border-bottom:1px solid #f3f4f6; margin-bottom:20px; }
+.ghm-portal-hotel   { font-family:'Playfair Display',serif; font-size:18px; color:#c9a84c; font-weight:600; }
+.ghm-portal-welcome { font-size:13px; color:#6b7280; margin-top:2px; }
+
+/* ─── Status Banner ──────────────────────────────────────────── */
+.ghm-portal-status-banner { display:flex; align-items:center; gap:14px; background:#f9fafb; border:1px solid #e5e7eb; border-left:4px solid #c9a84c; border-radius:10px; padding:14px 18px; margin-bottom:20px; }
+.ghm-portal-status-dot    { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.ghm-portal-status-label  { font-size:14px; font-weight:600; color:#1a1a2e; }
+.ghm-portal-ref           { font-size:12px; color:#9ca3af; font-family:monospace; letter-spacing:1px; margin-top:2px; }
+.ghm-portal-balance-alert { margin-left:auto; font-size:13px; color:#ef4444; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:6px 12px; }
+
+/* ─── Tabs ───────────────────────────────────────────────────── */
+.ghm-portal-tabs { display:flex; gap:4px; background:#f3f4f6; border-radius:10px; padding:4px; margin-bottom:20px; flex-wrap:wrap; }
+.ghm-portal-tab  { flex:1; padding:9px 14px; border:none; border-radius:8px; font-size:13px; font-weight:500; color:#6b7280; cursor:pointer; background:transparent; transition:all .2s; font-family:'DM Sans',sans-serif; white-space:nowrap; }
+.ghm-portal-tab:hover  { background:#e5e7eb; color:#374151; }
+.ghm-portal-tab.active { background:#fff; color:#1a1a2e; font-weight:600; box-shadow:0 1px 4px rgba(0,0,0,.1); }
+.ghm-portal-tab-content { display:none; }
+.ghm-portal-tab-content.active { display:block; }
+
+/* ─── Cards ──────────────────────────────────────────────────── */
+.ghm-portal-card { background:#fff; border:1.5px solid #e5e7eb; border-radius:12px; padding:20px; }
+.ghm-portal-card-title { font-family:'Playfair Display',serif; font-size:16px; color:#1a1a2e; margin:0 0 14px; padding-bottom:10px; border-bottom:1px solid #f3f4f6; }
+.ghm-portal-card-grid  { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+
+/* ─── Info List ──────────────────────────────────────────────── */
+.ghm-portal-info-list { list-style:none; margin:0; padding:0; }
+.ghm-portal-info-list li { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f9fafb; font-size:14px; }
+.ghm-portal-info-list li:last-child { border-bottom:none; }
+.ghm-portal-info-list li span  { color:#9ca3af; }
+.ghm-portal-info-list li strong{ color:#1a1a2e; }
+
+/* ─── Dates Grid ─────────────────────────────────────────────── */
+.ghm-portal-dates-grid { display:flex; align-items:center; gap:12px; }
+.ghm-portal-date-box   { flex:1; text-align:center; padding:14px; border-radius:10px; background:#f9fafb; border:1.5px solid #e5e7eb; }
+.ghm-portal-date-in  .ghm-portal-date-label { color:#3ecf8e; }
+.ghm-portal-date-out .ghm-portal-date-label { color:#ef4444; }
+.ghm-portal-date-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:4px; }
+.ghm-portal-date-day   { font-size:32px; font-weight:700; color:#1a1a2e; line-height:1; }
+.ghm-portal-date-month { font-size:12px; color:#6b7280; margin-top:2px; }
+.ghm-portal-date-time  { font-size:11px; color:#9ca3af; margin-top:4px; }
+.ghm-portal-nights     { text-align:center; color:#c9a84c; font-weight:700; }
+.ghm-portal-nights div:first-child { font-size:24px; }
+.ghm-portal-nights div:last-child  { font-size:11px; text-transform:uppercase; letter-spacing:1px; }
+
+/* ─── Finance ────────────────────────────────────────────────── */
+.ghm-portal-finance-row { display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid #f3f4f6; font-size:14px; }
+.ghm-portal-finance-row:last-child { border-bottom:none; }
+.ghm-portal-finance-balance { color:#ef4444; font-weight:600; }
+
+/* ─── Payments ───────────────────────────────────────────────── */
+.ghm-portal-payment-list { display:flex; flex-direction:column; gap:12px; }
+.ghm-portal-payment-row  { display:flex; align-items:center; gap:14px; padding:12px; background:#f9fafb; border-radius:8px; }
+.ghm-portal-payment-icon { font-size:24px; flex-shrink:0; }
+.ghm-portal-payment-details { flex:1; }
+.ghm-portal-payment-method { font-size:14px; font-weight:600; color:#1a1a2e; }
+.ghm-portal-payment-date   { font-size:12px; color:#9ca3af; margin-top:1px; }
+.ghm-portal-payment-ref    { font-size:11px; color:#c9a84c; font-family:monospace; margin-top:2px; }
+.ghm-portal-payment-amount { font-size:16px; font-weight:700; color:#3ecf8e; margin-left:auto; }
+
+/* ─── Service Grid ───────────────────────────────────────────── */
+.ghm-portal-service-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:8px; }
+.ghm-portal-service-option { display:flex; align-items:center; gap:8px; padding:10px 12px; border:1.5px solid #e5e7eb; border-radius:8px; cursor:pointer; transition:all .2s; font-size:13px; }
+.ghm-portal-service-option:hover { border-color:#c9a84c; background:#fffdf5; }
+.ghm-portal-service-option input { accent-color:#c9a84c; flex-shrink:0; }
+.ghm-portal-service-option input:checked + span { color:#1a1a2e; font-weight:600; }
+.ghm-portal-service-option:has(input:checked) { border-color:#c9a84c; background:#fffdf5; }
+
+/* ─── Stars ──────────────────────────────────────────────────── */
+.ghm-portal-star-picker { display:flex; gap:4px; margin-top:8px; }
+.ghm-portal-star-picker .ghm-star.active { color:#f59e0b !important; }
+.ghm-portal-rating-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:8px; }
+.ghm-portal-cat-rating  { padding:12px; background:#f9fafb; border-radius:8px; }
+.ghm-portal-cat-label   { font-size:13px; color:#374151; margin-bottom:6px; }
+.ghm-portal-review-submitted { text-align:center; padding:32px; }
+.ghm-portal-stars-display { display:flex; gap:4px; }
+
+/* ─── Buttons ────────────────────────────────────────────────── */
+.ghm-portal-btn { display:inline-flex; align-items:center; gap:8px; padding:10px 20px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; border:none; transition:all .2s; font-family:'DM Sans',sans-serif; text-decoration:none; }
+.ghm-portal-btn-primary { background:linear-gradient(135deg,#c9a84c,#e8c97a); color:#1a1a2e; }
+.ghm-portal-btn-primary:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(201,168,76,.4); }
+.ghm-portal-btn-outline { background:transparent; border:1.5px solid #e5e7eb; color:#374151; }
+.ghm-portal-btn-outline:hover { border-color:#c9a84c; color:#c9a84c; }
+.ghm-portal-btn-ghost { background:transparent; border:none; color:#9ca3af; font-size:13px; padding:6px 12px; }
+.ghm-portal-btn-ghost:hover { color:#ef4444; }
+.ghm-portal-btn-paystack { background:linear-gradient(135deg,#00C3F7,#0099CC); color:#fff; }
+.ghm-portal-btn-paystack:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,195,247,.4); }
+
+/* ─── Form Fields ────────────────────────────────────────────── */
+.ghm-portal-field { margin-bottom:14px; }
+.ghm-portal-field label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:#6b7280; margin-bottom:6px; }
+.ghm-portal-field input,
+.ghm-portal-field textarea,
+.ghm-portal-field select { width:100%; padding:10px 14px; border:1.5px solid #e5e7eb; border-radius:8px; font-size:14px; font-family:'DM Sans',sans-serif; outline:none; transition:border-color .2s; color:#1a1a2e; }
+.ghm-portal-field input:focus,
+.ghm-portal-field textarea:focus { border-color:#c9a84c; }
+
+/* ─── Alert ──────────────────────────────────────────────────── */
+.ghm-portal-alert { padding:12px 16px; border-radius:8px; font-size:14px; }
+.ghm-portal-alert.success { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+.ghm-portal-alert.error   { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+.ghm-portal-alert.info    { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+@media (max-width:600px) {
+  .ghm-portal-card-grid { grid-template-columns:1fr; }
+  .ghm-portal-dates-grid { flex-direction:column; }
+  .ghm-portal-nights { display:none; }
+  .ghm-portal-rating-grid { grid-template-columns:1fr; }
+  .ghm-portal-service-grid { grid-template-columns:1fr; }
+  .ghm-portal-login-card { padding:24px; }
+}
