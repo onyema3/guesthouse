@@ -15,9 +15,16 @@ class GHM_Invoice {
 
     public function __construct( $booking_id ) {
         $this->booking  = GHM_Bookings::get_booking( $booking_id );
-        $this->payments = GHM_Payments::get_payments( array('booking_id' => $booking_id, 'limit' => 50) );
+        $this->payments = $this->booking
+            ? GHM_Payments::get_payments( array('booking_id' => $booking_id, 'limit' => 50) )
+            : array();
+        if ( ! is_array( $this->payments ) ) $this->payments = array();
         $this->hotel    = get_option('ghm_hotel_name', get_bloginfo('name'));
         $this->sym      = get_option('ghm_currency_symbol', '₦');
+    }
+
+    public function has_booking() {
+        return ! empty( $this->booking );
     }
 
     /**
@@ -39,6 +46,7 @@ class GHM_Invoice {
      * Save PDF to file and return path
      */
     public function save( $path = '' ) {
+        if ( ! $this->booking ) return false;
         $pdf = $this->generate();
         if ( ! $path ) {
             $upload = wp_upload_dir();
@@ -51,15 +59,32 @@ class GHM_Invoice {
     }
 
     private function generate() {
+        if ( ! $this->booking ) {
+            return '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;text-align:center;padding:60px;">'
+                 . '<h1 style="color:#c9a84c;">Invoice Unavailable</h1>'
+                 . '<p>The booking for this invoice could not be found.</p>'
+                 . '</body></html>';
+        }
+
         $b        = $this->booking;
         $hotel    = $this->hotel;
         $sym      = $this->sym;
         $currency = strtoupper( get_option('ghm_currency', 'NGN') );
         $today    = date('F j, Y');
-        $checkin  = date('F j, Y', strtotime($b->check_in));
-        $checkout = date('F j, Y', strtotime($b->check_out));
-        $nights   = max(1, (int)(new DateTime($b->check_in))->diff(new DateTime($b->check_out))->days);
-        $balance  = (float)$b->total_amount - (float)$b->paid_amount;
+        $checkin  = $b->check_in  ? date('F j, Y', strtotime($b->check_in))  : '—';
+        $checkout = $b->check_out ? date('F j, Y', strtotime($b->check_out)) : '—';
+
+        // Safe nights calculation — DateTime can throw on malformed dates.
+        $nights = 1;
+        try {
+            if ( $b->check_in && $b->check_out ) {
+                $nights = max(1, (int)(new DateTime($b->check_in))->diff(new DateTime($b->check_out))->days);
+            }
+        } catch ( \Exception $e ) {
+            $nights = 1;
+        }
+
+        $balance    = (float)$b->total_amount - (float)$b->paid_amount;
         $paid_total = array_sum( array_column( (array)$this->payments, 'amount' ) );
 
         // Build HTML for wkhtmltopdf-style generation or native PHP PDF
@@ -219,8 +244,8 @@ class GHM_Invoice {
       <tr class="grand">
         <td>Payment Status</td>
         <td class="amount-col">
-          <span class="status-badge <?php echo $b->payment_status; ?>">
-            <?php echo ucfirst($b->payment_status); ?>
+          <span class="status-badge <?php echo esc_attr($b->payment_status ?? 'unpaid'); ?>">
+            <?php echo esc_html(ucfirst($b->payment_status ?? 'unpaid')); ?>
           </span>
         </td>
       </tr>
@@ -240,22 +265,24 @@ class GHM_Invoice {
         <?php
         $html = ob_get_clean();
 
-        // Try to use wkhtmltopdf if available, otherwise return HTML disguised as PDF wrapper
-        $wk = shell_exec('which wkhtmltopdf 2>/dev/null');
-        if ( trim($wk) ) {
-            $tmp_html = tempnam(sys_get_temp_dir(), 'ghm_inv_') . '.html';
-            $tmp_pdf  = tempnam(sys_get_temp_dir(), 'ghm_inv_') . '.pdf';
-            file_put_contents( $tmp_html, $html );
-            shell_exec( "wkhtmltopdf --quiet --page-size A4 --margin-top 0 --margin-bottom 0 --margin-left 0 --margin-right 0 '$tmp_html' '$tmp_pdf' 2>/dev/null" );
-            if ( file_exists($tmp_pdf) ) {
-                $pdf = file_get_contents($tmp_pdf);
-                unlink($tmp_html); unlink($tmp_pdf);
-                return $pdf;
+        // Try to use wkhtmltopdf if available (skip if shell_exec is disabled).
+        if ( function_exists('shell_exec') && ! in_array('shell_exec', array_map('trim', explode(',', (string) ini_get('disable_functions'))), true) ) {
+            $wk = @shell_exec('which wkhtmltopdf 2>/dev/null');
+            if ( $wk && trim($wk) ) {
+                $tmp_html = tempnam(sys_get_temp_dir(), 'ghm_inv_') . '.html';
+                $tmp_pdf  = tempnam(sys_get_temp_dir(), 'ghm_inv_') . '.pdf';
+                file_put_contents( $tmp_html, $html );
+                @shell_exec( "wkhtmltopdf --quiet --page-size A4 --margin-top 0 --margin-bottom 0 --margin-left 0 --margin-right 0 " . escapeshellarg($tmp_html) . " " . escapeshellarg($tmp_pdf) . " 2>/dev/null" );
+                if ( file_exists($tmp_pdf) && filesize($tmp_pdf) > 0 ) {
+                    $pdf = file_get_contents($tmp_pdf);
+                    @unlink($tmp_html); @unlink($tmp_pdf);
+                    return $pdf;
+                }
+                @unlink($tmp_html); @unlink($tmp_pdf);
             }
         }
 
-        // Fallback: use dompdf if loaded, otherwise serve HTML with PDF headers
-        // The HTML itself is fully printer-ready and will render correctly
+        // Fallback: serve HTML (browser can Save As PDF / Print to PDF)
         return $html;
     }
 
@@ -271,18 +298,73 @@ class GHM_Invoice {
 
     /**
      * Handle the invoice request (hooked to template_redirect)
+     *
+     * Authorisation order:
+     *   1. WP nonce (works for admin clicks and same-session portal clicks).
+     *   2. Logged-in portal customer whose session booking == requested booking.
+     *   3. WP user with `ghm_manage_bookings` capability (admin/manager/staff).
      */
     public static function handle_request() {
         if ( empty($_GET['ghm_invoice']) ) return;
+
         $booking_id = absint($_GET['ghm_invoice']);
-        $nonce      = sanitize_text_field($_GET['ghm_inv_nonce'] ?? '');
-        if ( ! wp_verify_nonce($nonce, 'ghm_invoice_' . $booking_id) ) wp_die('Invalid link.');
-        $invoice = new self( $booking_id );
-        // Determine content type
-        header('Content-Type: text/html; charset=UTF-8');
-        header('Content-Disposition: inline');
-        echo $invoice->generate();
-        exit;
+        if ( ! $booking_id ) {
+            wp_die( 'Invalid invoice link.', 'Invoice', array( 'response' => 400 ) );
+        }
+
+        $nonce = isset($_GET['ghm_inv_nonce']) ? sanitize_text_field($_GET['ghm_inv_nonce']) : '';
+
+        $authorised = false;
+
+        // 1. Valid WP nonce
+        if ( $nonce && wp_verify_nonce($nonce, 'ghm_invoice_' . $booking_id) ) {
+            $authorised = true;
+        }
+
+        // 2. Portal customer viewing their own booking
+        if ( ! $authorised && class_exists('GHM_Guest_Portal') ) {
+            if ( ! session_id() && ! headers_sent() ) {
+                @session_start();
+            }
+            $session_booking_id = (int) GHM_Guest_Portal::get_session_booking_id();
+            if ( $session_booking_id && $session_booking_id === $booking_id ) {
+                $authorised = true;
+            }
+        }
+
+        // 3. Staff/manager/admin
+        if ( ! $authorised && is_user_logged_in() && current_user_can('ghm_manage_bookings') ) {
+            $authorised = true;
+        }
+
+        if ( ! $authorised ) {
+            wp_die( 'You are not authorised to view this invoice.', 'Invoice', array( 'response' => 403 ) );
+        }
+
+        try {
+            $invoice = new self( $booking_id );
+
+            if ( ! $invoice->has_booking() ) {
+                wp_die( 'Booking not found for this invoice.', 'Invoice', array( 'response' => 404 ) );
+            }
+
+            if ( ! headers_sent() ) {
+                header('Content-Type: text/html; charset=UTF-8');
+                header('Content-Disposition: inline');
+                header('X-Robots-Tag: noindex, nofollow');
+            }
+            echo $invoice->generate();
+            exit;
+        } catch ( \Throwable $e ) {
+            if ( defined('WP_DEBUG') && WP_DEBUG ) {
+                error_log( '[GHM_Invoice] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() );
+            }
+            wp_die(
+                'There was a problem generating the invoice. Please contact support.',
+                'Invoice Error',
+                array( 'response' => 500 )
+            );
+        }
     }
 }
 
