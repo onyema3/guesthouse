@@ -1,28 +1,68 @@
 <?php if ( ! defined( 'ABSPATH' ) ) exit;
 if ( isset( $_POST['ghm_save_settings'] ) && check_admin_referer( 'ghm_settings' ) ) {
-    // Save Flutterwave and scheduler fields
-    foreach(array('ghm_flw_test_public_key','ghm_flw_test_secret_key','ghm_flw_live_public_key','ghm_flw_live_secret_key') as $f) {
-        update_option($f, sanitize_text_field($_POST[$f]??''));
-    }
-    foreach(array('ghm_flw_enabled','ghm_flw_test_mode','ghm_email_digest','ghm_dynamic_pricing_enabled') as $c) {
-        update_option($c, isset($_POST[$c])?1:0);
-    }
-    $text_fields = array(
-        'ghm_hotel_name','ghm_currency','ghm_currency_symbol','ghm_checkin_time','ghm_checkout_time',
-        'ghm_admin_email','ghm_hotel_address','ghm_hotel_phone','ghm_hotel_website',
-        'ghm_tax_label','ghm_tax_rate',
-        'ghm_paystack_test_public_key','ghm_paystack_test_secret_key',
-        'ghm_paystack_live_public_key','ghm_paystack_live_secret_key','ghm_paystack_payment_required',
-        'ghm_wa_provider','ghm_wa_admin_phone','ghm_wa_country_code',
-        'ghm_wa_twilio_sid','ghm_wa_twilio_token','ghm_wa_twilio_from',
-        'ghm_wa_meta_token','ghm_wa_meta_phone_id',
-        'ghm_wa_ultramsg_instance','ghm_wa_ultramsg_token',
-        'ghm_gcal_client_id','ghm_gcal_client_secret','ghm_gcal_calendar_id','ghm_api_key',
+    // Determine which tab is being saved — only update fields belonging to that tab
+    // so saving one tab doesn't wipe fields from other tabs (which aren't in $_POST).
+    $saved_tab = sanitize_key( $_POST['ghm_active_tab'] ?? 'general' );
+
+    // Map of tab => array of [text_fields, checkbox_fields]
+    $tab_fields = array(
+        'general' => array(
+            'text' => array(
+                'ghm_hotel_name','ghm_hotel_address','ghm_hotel_phone','ghm_admin_email',
+                'ghm_currency','ghm_currency_symbol','ghm_checkin_time','ghm_checkout_time',
+            ),
+            'checkbox' => array( 'ghm_email_notify','ghm_email_digest' ),
+        ),
+        'payments' => array(
+            'text' => array(
+                'ghm_paystack_test_public_key','ghm_paystack_test_secret_key',
+                'ghm_paystack_live_public_key','ghm_paystack_live_secret_key',
+                'ghm_paystack_payment_required',
+                'ghm_flw_test_public_key','ghm_flw_test_secret_key',
+                'ghm_flw_live_public_key','ghm_flw_live_secret_key',
+            ),
+            'checkbox' => array(
+                'ghm_paystack_enabled','ghm_paystack_test_mode',
+                'ghm_flw_enabled','ghm_flw_test_mode',
+            ),
+        ),
+        'whatsapp' => array(
+            'text' => array(
+                'ghm_wa_provider','ghm_wa_admin_phone','ghm_wa_country_code',
+                'ghm_wa_twilio_sid','ghm_wa_twilio_token','ghm_wa_twilio_from',
+                'ghm_wa_meta_token','ghm_wa_meta_phone_id',
+                'ghm_wa_ultramsg_instance','ghm_wa_ultramsg_token',
+            ),
+            'checkbox' => array( 'ghm_wa_enabled' ),
+        ),
+        'calendar' => array(
+            'text' => array(
+                'ghm_gcal_client_id','ghm_gcal_client_secret','ghm_gcal_calendar_id',
+            ),
+            'checkbox' => array( 'ghm_gcal_enabled' ),
+        ),
+        'tax' => array(
+            'text' => array( 'ghm_tax_label','ghm_tax_rate' ),
+            'checkbox' => array( 'ghm_tax_inclusive' ),
+        ),
+        'api' => array(
+            'text' => array( 'ghm_api_key' ),
+            'checkbox' => array(),
+        ),
+        'shortcodes' => array( 'text' => array(), 'checkbox' => array() ),
     );
-    foreach ( $text_fields as $f ) update_option( $f, sanitize_text_field( $_POST[$f] ?? '' ) );
-    foreach ( array('ghm_email_notify','ghm_paystack_enabled','ghm_paystack_test_mode','ghm_wa_enabled','ghm_gcal_enabled','ghm_tax_inclusive') as $c ) {
-        update_option( $c, isset($_POST[$c]) ? 1 : 0 );
+
+    if ( isset( $tab_fields[ $saved_tab ] ) ) {
+        foreach ( $tab_fields[ $saved_tab ]['text'] as $f ) {
+            if ( array_key_exists( $f, $_POST ) ) {
+                update_option( $f, sanitize_text_field( $_POST[ $f ] ) );
+            }
+        }
+        foreach ( $tab_fields[ $saved_tab ]['checkbox'] as $c ) {
+            update_option( $c, isset( $_POST[ $c ] ) ? 1 : 0 );
+        }
     }
+
     add_settings_error( 'ghm_settings', 'saved', 'Settings saved successfully.', 'success' );
 }
 $sym        = get_option('ghm_currency_symbol','₦');
@@ -42,6 +82,7 @@ $active_tab = sanitize_key($_GET['tab'] ?? 'general');
 
   <form method="post" action="">
     <?php wp_nonce_field('ghm_settings'); ?>
+    <input type="hidden" name="ghm_active_tab" value="<?php echo esc_attr( $active_tab ); ?>">
 
     <?php if ($active_tab==='general'): ?>
     <div class="ghm-form-section" style="max-width:820px;">
