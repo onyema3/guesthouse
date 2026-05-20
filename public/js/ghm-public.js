@@ -5,8 +5,48 @@
   const GHMPublic = {
 
     init() {
+      this.ensurePaymentSDKs();
       this.bindBookingForm();
       this.bindRoomCards();
+    },
+
+    /* ─── Defensive Payment-SDK Loader ─────────────────────────
+     *
+     * Some hosting setups (caching/optimization plugins like WP Rocket,
+     * Autoptimize, LiteSpeed; cookie-consent plugins like Cookiebot,
+     * Complianz; or page builders rendering via AJAX) silently strip or
+     * defer the external <script src="…paystack…"> / <script src="…
+     * flutterwave…"> tags that WordPress enqueues. When that happens,
+     * `typeof PaystackPop` is undefined at click time and the user is
+     * told "Paystack could not load".
+     *
+     * This loader runs at page init and injects the SDK script tags
+     * directly into <head> if (a) the gateway is enabled per the
+     * localized config and (b) the global isn't already present. If the
+     * tag is already there (just not loaded yet), we don't add a second.
+     * ─────────────────────────────────────────────────────────── */
+    ensurePaymentSDKs() {
+      const ensure = (isLoaded, src) => {
+        if (isLoaded()) return;
+        if (document.querySelector('script[src="' + src + '"]')) return;
+        const s = document.createElement('script');
+        s.src   = src;
+        s.async = true;
+        document.head.appendChild(s);
+      };
+
+      if (typeof ghmPaystack !== 'undefined' && ghmPaystack.enabled) {
+        ensure(
+          () => typeof PaystackPop !== 'undefined' && typeof PaystackPop.setup === 'function',
+          'https://js.paystack.co/v1/inline.js'
+        );
+      }
+      if (typeof ghmFlutterwave !== 'undefined' && ghmFlutterwave.enabled) {
+        ensure(
+          () => typeof FlutterwaveCheckout !== 'undefined',
+          'https://checkout.flutterwave.com/v3.js'
+        );
+      }
     },
 
     /* ─── Booking Form ─────────────────────────────────────────── */
@@ -312,19 +352,42 @@
       }
     },
 
+    /* ─── Wait for an SDK to be ready ──────────────────────────
+     * Retries up to ~3s (12 × 250ms) for the global to appear, in
+     * case the dynamic injection from ensurePaymentSDKs() is still
+     * loading when the user clicks Pay.
+     * ─────────────────────────────────────────────────────────── */
+    waitForSDK(isLoaded, onReady, onTimeout, attempt = 0) {
+      if (isLoaded()) { onReady(); return; }
+      if (attempt >= 12) { onTimeout(); return; }
+      setTimeout(() => this.waitForSDK(isLoaded, onReady, onTimeout, attempt + 1), 250);
+    },
+
     /* ─── Paystack Flow ────────────────────────────────────────── */
     initiatePaystackPayment() {
       const $btn = $('#ghm-confirm-btn');
       const sym  = $('#ghm-currency-symbol').val() || '';
 
-      // Fail fast if the Paystack inline.js SDK didn't load, or if a v2
-      // script overwrote the global (v2 has no .setup method).
-      if (typeof PaystackPop === 'undefined' || typeof PaystackPop.setup !== 'function') {
-        this.showAlert('Paystack could not load. Please disable ad-blockers, refresh the page, and try again.', 'error');
+      const proceed = () => this._paystackProceed($btn, sym);
+      const fail = () => {
+        this.showAlert(
+          'Paystack could not load. This is usually caused by a caching, optimization, or cookie-consent plugin blocking external scripts. Please refresh the page, accept cookies if prompted, or choose Pay on Arrival.',
+          'error'
+        );
         this.updateConfirmBtn('paystack', sym + parseFloat($('#ghm-pb-total-amount').val()||0).toFixed(2));
-        return;
-      }
+      };
 
+      // Try to (re)inject if missing, then wait briefly for it.
+      this.ensurePaymentSDKs();
+      $btn.prop('disabled', true).html('<span class="ghm-pub-spinner"></span> Loading payment…');
+      this.waitForSDK(
+        () => typeof PaystackPop !== 'undefined' && typeof PaystackPop.setup === 'function',
+        proceed,
+        () => { $btn.prop('disabled', false); fail(); }
+      );
+    },
+
+    _paystackProceed($btn, sym) {
       const formData = {};
       $('#ghm-public-booking-form').serializeArray().forEach(({name, value}) => {
         formData[name] = value;
@@ -430,16 +493,28 @@
 
     /* ─── Flutterwave Flow ──────────────────────────────────────── */
     initiateFlutterwavePayment() {
-      const $btn    = $('#ghm-confirm-btn');
-      const sym     = $('#ghm-currency-symbol').val() || '';
+      const $btn = $('#ghm-confirm-btn');
+      const sym  = $('#ghm-currency-symbol').val() || '';
 
-      // Fail fast if the Flutterwave SDK didn't load.
-      if (typeof FlutterwaveCheckout === 'undefined') {
-        this.showAlert('Flutterwave could not load. Please disable ad-blockers, refresh the page, and try again.', 'error');
+      const proceed = () => this._flutterwaveProceed($btn, sym);
+      const fail = () => {
+        this.showAlert(
+          'Flutterwave could not load. This is usually caused by a caching, optimization, or cookie-consent plugin blocking external scripts. Please refresh the page, accept cookies if prompted, or choose Pay on Arrival.',
+          'error'
+        );
         this.updateConfirmBtn('flutterwave', sym + parseFloat($('#ghm-pb-total-amount').val()||0).toFixed(2));
-        return;
-      }
+      };
 
+      this.ensurePaymentSDKs();
+      $btn.prop('disabled', true).html('<span class="ghm-pub-spinner"></span> Loading payment…');
+      this.waitForSDK(
+        () => typeof FlutterwaveCheckout !== 'undefined',
+        proceed,
+        () => { $btn.prop('disabled', false); fail(); }
+      );
+    },
+
+    _flutterwaveProceed($btn, sym) {
       const formData = {};
       $('#ghm-public-booking-form').serializeArray().forEach(({name,value}) => { formData[name]=value; });
 
