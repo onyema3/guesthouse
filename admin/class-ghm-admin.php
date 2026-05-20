@@ -137,9 +137,13 @@ class GHM_Admin {
         self::verify( 'ghm_manage_payments' );
         $id     = absint( $_POST['id'] ?? 0 );
         $result = GHM_Discounts::save( $_POST, $id );
-        is_wp_error( $result )
-            ? wp_send_json_error( array( 'message' => $result->get_error_message() ) )
-            : wp_send_json_success( array( 'id' => $result ) );
+        if ( is_wp_error( $result ) ) {
+            wp_send_json_error( array( 'message' => $result->get_error_message() ) );
+        } elseif ( empty( $result ) ) {
+            wp_send_json_error( array( 'message' => 'Failed to save discount code. Please check your input and try again.' ) );
+        } else {
+            wp_send_json_success( array( 'id' => $result ) );
+        }
         exit;
     }
 
