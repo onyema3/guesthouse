@@ -5,6 +5,7 @@
   const Portal = {
 
     init() {
+      this.ensurePaymentSDKs();
       this.bindLogin();
       this.bindLogout();
       this.bindTabs();
@@ -13,6 +14,35 @@
       this.bindReviewForm();
       this.bindPaystackBalance();
       this.bindFlutterwaveBalance();
+    },
+
+    /* ─── Defensive Payment-SDK Loader ─────────────────────────
+     * See note in ghm-public.js. Mirrored here so the portal's
+     * Pay-Balance buttons work even when a caching/consent plugin
+     * suppresses the enqueued external scripts.
+     * ─────────────────────────────────────────────────────────── */
+    ensurePaymentSDKs() {
+      const ensure = (isLoaded, src) => {
+        if (isLoaded()) return;
+        if (document.querySelector('script[src="' + src + '"]')) return;
+        const s = document.createElement('script');
+        s.src   = src;
+        s.async = true;
+        document.head.appendChild(s);
+      };
+
+      if (typeof ghmPaystack !== 'undefined' && ghmPaystack.enabled) {
+        ensure(
+          () => typeof PaystackPop !== 'undefined' && typeof PaystackPop.setup === 'function',
+          'https://js.paystack.co/v1/inline.js'
+        );
+      }
+      if (typeof ghmFlutterwave !== 'undefined' && ghmFlutterwave.enabled) {
+        ensure(
+          () => typeof FlutterwaveCheckout !== 'undefined',
+          'https://checkout.flutterwave.com/v3.js'
+        );
+      }
     },
 
     /* ─── Login ──────────────────────────────────────────────── */
