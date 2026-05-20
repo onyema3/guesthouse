@@ -153,6 +153,9 @@ class GHM_Guest_Portal {
     /* ── AJAX: Login ─────────────────────────────────────────────── */
 
     public static function ajax_login() {
+        if ( ! session_id() && ! headers_sent() ) {
+            session_start();
+        }
         check_ajax_referer( 'ghm_portal_nonce', 'nonce' );
 
         $ref   = strtoupper( sanitize_text_field( $_POST['booking_ref'] ?? '' ) );
@@ -194,9 +197,11 @@ class GHM_Guest_Portal {
             session_start();
         }
         self::clear_session();
-        if ( session_id() ) {
-            session_destroy();
-        }
+        // Wipe all session data but do NOT call session_destroy() —
+        // destroying invalidates the session cookie, which prevents
+        // the next login from working until the browser does a full
+        // page load to get a fresh session ID.
+        $_SESSION = array();
         wp_send_json_success();
         exit;
     }
@@ -311,6 +316,19 @@ class GHM_Guest_Portal {
     /* ── Shortcode render ────────────────────────────────────────── */
 
     public static function render( $atts ) {
+        // Tell LiteSpeed Cache (and other page caches) to never cache this page.
+        // The portal content is session-dependent — caching it would show the
+        // wrong state (login form vs dashboard) to guests.
+        if ( ! defined( 'LSCACHE_NO_CACHE' ) ) {
+            define( 'LSCACHE_NO_CACHE', true );
+        }
+        // Also set headers that prevent any proxy/CDN/browser caching
+        if ( ! headers_sent() ) {
+            header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
+            header( 'Pragma: no-cache' );
+            header( 'X-LiteSpeed-Cache-Control: no-cache' );
+        }
+
         $booking_id = self::get_session_booking_id();
         $booking    = $booking_id ? GHM_Bookings::get_booking( $booking_id ) : null;
         $customer   = $booking    ? GHM_Customers::get_customer( $booking->customer_id ) : null;
