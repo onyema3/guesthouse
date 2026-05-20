@@ -346,7 +346,8 @@
         const d = res.data;
         $btn.html('<span class="ghm-pub-spinner"></span> Opening Paystack…');
 
-        const popup = new PaystackPop();
+        try {
+        const popup = (typeof PaystackPop === 'function') ? new PaystackPop() : PaystackPop;
         popup.newTransaction({
           key      : ghmPaystack.public_key,
           email    : d.email,
@@ -396,6 +397,12 @@
             });
           }
         });
+        } catch(e) {
+          console.error('Paystack error:', e);
+          this.showAlert('Could not open payment window. Please disable ad-blockers and try again, or choose Pay on Arrival.', 'error');
+          $btn.prop('disabled', false);
+          this.updateConfirmBtn('paystack', sym + parseFloat(formData.total_amount||0).toFixed(2));
+        }
       })
       .fail(() => {
         this.showAlert('Network error. Please check your connection and try again.', 'error');
