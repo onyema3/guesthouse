@@ -68,8 +68,20 @@ class GHM_Flutterwave {
         }
 
         $amount     = GHM_Bookings::calculate_amount($data['room_id']??0,$data['check_in']??'',$data['check_out']??'',$data['booking_type']??'room');
+
+        // Apply discount if provided
+        $discount_amount = 0;
+        $discount_id     = absint( $data['discount_id'] ?? 0 );
+        if ( $discount_id && class_exists('GHM_Discounts') ) {
+            $discount_amount = (float)( $data['discount_amount'] ?? 0 );
+            if ( $discount_amount > 0 && $discount_amount < $amount ) {
+                $amount = round( $amount - $discount_amount, 2 );
+                GHM_Discounts::apply( $discount_id );
+            }
+        }
+
         $booking_id = GHM_Bookings::create_booking(array_merge($data,array(
-            'customer_id'=>$customer_id,'total_amount'=>$amount,'status'=>'pending',
+            'customer_id'=>$customer_id,'total_amount'=>$amount,'discount_amount'=>$discount_amount,'status'=>'pending',
         )));
 
         if (is_wp_error($booking_id)) { wp_send_json_error(array('message'=>$booking_id->get_error_message())); exit; }

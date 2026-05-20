@@ -110,12 +110,24 @@ class GHM_Paystack {
             exit;
         }
 
+        // 2b. Apply discount if provided
+        $discount_amount = 0;
+        $discount_id     = absint( $data['discount_id'] ?? 0 );
+        if ( $discount_id && class_exists('GHM_Discounts') ) {
+            $discount_amount = (float)( $data['discount_amount'] ?? 0 );
+            if ( $discount_amount > 0 && $discount_amount < $amount ) {
+                $amount = round( $amount - $discount_amount, 2 );
+                GHM_Discounts::apply( $discount_id );
+            }
+        }
+
         // 3. Create a PENDING booking
         $booking_id = GHM_Bookings::create_booking( array_merge( $data, array(
-            'customer_id'  => $customer_id,
-            'total_amount' => $amount,
-            'status'       => 'pending',
-            'payment_status' => 'unpaid',
+            'customer_id'     => $customer_id,
+            'total_amount'    => $amount,
+            'discount_amount' => $discount_amount,
+            'status'          => 'pending',
+            'payment_status'  => 'unpaid',
         ) ) );
 
         if ( is_wp_error( $booking_id ) ) {
