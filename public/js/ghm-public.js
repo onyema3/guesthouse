@@ -346,14 +346,15 @@
         const d = res.data;
         $btn.html('<span class="ghm-pub-spinner"></span> Opening Paystack…');
 
-        const handler = PaystackPop.setup({
+        const popup = new PaystackPop();
+        popup.newTransaction({
           key      : ghmPaystack.public_key,
           email    : d.email,
           amount   : d.amount,
           currency : d.currency,
           ref      : d.reference,
-          firstname: formData.first_name || '',
-          lastname : formData.last_name  || '',
+          firstName: formData.first_name || '',
+          lastName : formData.last_name  || '',
           phone    : formData.phone      || '',
           label    : d.hotel_name,
           metadata : {
@@ -369,7 +370,7 @@
             this.updateConfirmBtn('paystack', sym + parseFloat(formData.total_amount||0).toFixed(2));
             this.showAlert('Payment cancelled. Your booking is held for 30 minutes — try again when ready.', 'info');
           },
-          callback: (response) => {
+          onSuccess: (response) => {
             $btn.html('<span class="ghm-pub-spinner"></span> Verifying Payment…').prop('disabled', true);
             $.post(ghmPublic.ajax_url, {
               action    : 'ghm_paystack_verify',
@@ -395,8 +396,6 @@
             });
           }
         });
-
-        handler.openIframe();
       })
       .fail(() => {
         this.showAlert('Network error. Please check your connection and try again.', 'error');
