@@ -55,19 +55,11 @@ class GHM_Flutterwave {
 
         $data = array_map('sanitize_text_field', $_POST);
 
-        // Find or create customer
-        $customer = GHM_Customers::get_customer_by_email($data['email'] ?? '');
-        if (!$customer) {
-            $customer_id = GHM_Customers::save_customer(array(
-                'first_name'=>$data['first_name']??'','last_name'=>$data['last_name']??'',
-                'email'=>$data['email']??'','phone'=>$data['phone']??'',
-            ));
-            if (is_wp_error($customer_id)) { wp_send_json_error(array('message'=>$customer_id->get_error_message())); exit; }
-        } else {
-            $customer_id = $customer->id;
-        }
+        $amount = GHM_Bookings::calculate_amount($data['room_id']??0,$data['check_in']??'',$data['check_out']??'',$data['booking_type']??'room');
 
-        $amount     = GHM_Bookings::calculate_amount($data['room_id']??0,$data['check_in']??'',$data['check_out']??'',$data['booking_type']??'room');
+        if ( $amount <= 0 ) {
+            wp_send_json_error(array('message'=>'Could not calculate booking amount.')); exit;
+        }
 
         // Apply discount if provided
         $discount_amount = 0;
@@ -76,7 +68,6 @@ class GHM_Flutterwave {
             $discount_amount = (float)( $data['discount_amount'] ?? 0 );
             if ( $discount_amount > 0 && $discount_amount <= $amount ) {
                 $amount = round( $amount - $discount_amount, 2 );
-                GHM_Discounts::apply( $discount_id );
             }
         }
 
@@ -86,27 +77,38 @@ class GHM_Flutterwave {
             $amount = $client_total;
         }
 
-        $booking_id = GHM_Bookings::create_booking(array_merge($data,array(
-            'customer_id'=>$customer_id,'total_amount'=>$amount,'discount_amount'=>$discount_amount,'status'=>'pending',
-        )));
+        // Check room availability
+        $room_available = GHM_Rooms::is_room_available(
+            absint( $data['room_id'] ?? 0 ),
+            $data['check_in']  ?? '',
+            $data['check_out'] ?? ''
+        );
+        if ( ! $room_available ) {
+            wp_send_json_error(array('message'=>'This room is no longer available for the selected dates.')); exit;
+        }
 
-        if (is_wp_error($booking_id)) { wp_send_json_error(array('message'=>$booking_id->get_error_message())); exit; }
-        $booking = GHM_Bookings::get_booking($booking_id);
+        $tx_ref = 'GHM-FLW-' . strtoupper( wp_generate_password( 8, false ) ) . '-' . time();
 
-        $tx_ref = 'GHM-FLW-'.$booking->booking_ref.'-'.time();
-        set_transient('ghm_flw_ref_'.$tx_ref, $booking_id, 3*HOUR_IN_SECONDS);
+        // Store booking data in transient — booking created only after payment verification
+        $booking_data = $data;
+        $booking_data['calculated_amount'] = $amount;
+        $booking_data['discount_amount']   = $discount_amount;
+        $booking_data['discount_id']       = $discount_id;
+        set_transient('ghm_flw_pending_'.$tx_ref, $booking_data, 3*HOUR_IN_SECONDS);
+
+        $room = GHM_Rooms::get_room( absint( $data['room_id'] ?? 0 ) );
 
         wp_send_json_success(array(
             'tx_ref'      => $tx_ref,
-            'booking_ref' => $booking->booking_ref,
-            'booking_id'  => $booking_id,
+            'booking_ref' => '',
+            'booking_id'  => 0,
             'amount'      => $amount,
             'currency'    => strtoupper(get_option('ghm_currency','NGN')),
-            'email'       => $data['email'],
+            'email'       => $data['email'] ?? '',
             'name'        => trim(($data['first_name']??'').' '.($data['last_name']??'')),
             'phone'       => $data['phone'] ?? '',
             'hotel_name'  => get_option('ghm_hotel_name',get_bloginfo('name')),
-            'description' => 'Booking: '.$booking->booking_ref.' — '.$booking->room_name,
+            'description' => 'Booking — ' . ($room ? $room->name : ''),
         ));
         exit;
     }
@@ -116,17 +118,52 @@ class GHM_Flutterwave {
             wp_send_json_error(array('message'=>'Security check failed.')); exit;
         }
         $tx_ref     = sanitize_text_field($_POST['tx_ref']    ?? '');
-        $booking_id = absint($_POST['booking_id'] ?? 0);
         $trx_id     = sanitize_text_field($_POST['transaction_id'] ?? '');
 
-        if (!$tx_ref || !$booking_id) { wp_send_json_error(array('message'=>'Missing parameters.')); exit; }
+        if (!$tx_ref) { wp_send_json_error(array('message'=>'Missing parameters.')); exit; }
+
+        // Retrieve stored booking data
+        $booking_data = get_transient('ghm_flw_pending_'.$tx_ref);
+        if ( !$booking_data ) {
+            wp_send_json_error(array('message'=>'Payment session expired. Please try again.')); exit;
+        }
 
         $result = self::verify_on_flutterwave($trx_id ?: $tx_ref);
         if (is_wp_error($result)) { wp_send_json_error(array('message'=>$result->get_error_message())); exit; }
 
         if ($result['status'] !== 'successful') {
-            GHM_Bookings::update_booking($booking_id, array('status'=>'cancelled','payment_status'=>'failed'));
             wp_send_json_error(array('message'=>'Payment was not successful.')); exit;
+        }
+
+        // Payment verified — now create the booking
+        $customer = GHM_Customers::get_customer_by_email($booking_data['email'] ?? '');
+        if (!$customer) {
+            $customer_id = GHM_Customers::save_customer(array(
+                'first_name'=>$booking_data['first_name']??'','last_name'=>$booking_data['last_name']??'',
+                'email'=>$booking_data['email']??'','phone'=>$booking_data['phone']??'',
+            ));
+            if (is_wp_error($customer_id)) {
+                wp_send_json_error(array('message'=>'Payment received but booking creation failed. Contact support with ref: '.$tx_ref)); exit;
+            }
+        } else {
+            $customer_id = $customer->id;
+        }
+
+        $amount          = (float)( $booking_data['calculated_amount'] ?? 0 );
+        $discount_amount = (float)( $booking_data['discount_amount']   ?? 0 );
+        $discount_id     = absint( $booking_data['discount_id']        ?? 0 );
+
+        if ( $discount_id && $discount_amount > 0 && class_exists('GHM_Discounts') ) {
+            GHM_Discounts::apply( $discount_id );
+        }
+
+        $booking_id = GHM_Bookings::create_booking(array_merge($booking_data, array(
+            'customer_id'=>$customer_id,'total_amount'=>$amount,'discount_amount'=>$discount_amount,
+            'status'=>'confirmed','payment_status'=>'paid',
+        )));
+
+        if (is_wp_error($booking_id)) {
+            wp_send_json_error(array('message'=>'Payment received but booking creation failed. Contact support with ref: '.$tx_ref)); exit;
         }
 
         $amount_paid = (float)$result['amount'];
@@ -134,8 +171,10 @@ class GHM_Flutterwave {
             'booking_id'    =>$booking_id,'amount'=>$amount_paid,
             'currency'      =>$result['currency'] ?? get_option('ghm_currency','NGN'),
             'method'        =>'online','transaction_id'=>$tx_ref,
-            'notes'         =>'Flutterwave: '.$result['payment_type'].' — '.$result['processor_response'],
+            'notes'         =>'Flutterwave: '.($result['payment_type']??'').' — '.($result['processor_response']??''),
         ));
+
+        delete_transient('ghm_flw_pending_'.$tx_ref);
 
         $booking = GHM_Bookings::get_booking($booking_id);
         wp_send_json_success(array('booking_ref'=>$booking->booking_ref,'amount'=>$amount_paid));
@@ -197,21 +236,46 @@ class GHM_Flutterwave {
         $body  = json_decode(file_get_contents('php://input'), true);
         if (!$body || $body['event'] !== 'charge.completed') { http_response_code(200); exit('OK'); }
 
-        $tx_ref     = $body['data']['tx_ref'] ?? '';
-        $booking_id = (int)get_transient('ghm_flw_ref_'.$tx_ref);
+        $tx_ref       = $body['data']['tx_ref'] ?? '';
+        $booking_data = get_transient('ghm_flw_pending_'.$tx_ref);
 
-        if ($booking_id > 0 && $body['data']['status'] === 'successful') {
-            $booking = GHM_Bookings::get_booking($booking_id);
-            if ($booking && $booking->payment_status !== 'paid') {
-                GHM_Payments::record_payment(array(
-                    'booking_id'    =>$booking_id,
-                    'amount'        =>(float)$body['data']['amount'],
-                    'currency'      =>$body['data']['currency'] ?? get_option('ghm_currency','NGN'),
-                    'method'        =>'online','transaction_id'=>$tx_ref,
-                    'notes'         =>'Flutterwave webhook',
+        if ($booking_data && $body['data']['status'] === 'successful') {
+            $customer = GHM_Customers::get_customer_by_email($booking_data['email'] ?? '');
+            if (!$customer) {
+                $customer_id = GHM_Customers::save_customer(array(
+                    'first_name'=>$booking_data['first_name']??'','last_name'=>$booking_data['last_name']??'',
+                    'email'=>$booking_data['email']??'','phone'=>$booking_data['phone']??'',
                 ));
-                delete_transient('ghm_flw_ref_'.$tx_ref);
+            } else {
+                $customer_id = $customer->id;
             }
+
+            if ( !is_wp_error($customer_id) ) {
+                $amount          = (float)( $booking_data['calculated_amount'] ?? 0 );
+                $discount_amount = (float)( $booking_data['discount_amount']   ?? 0 );
+                $discount_id     = absint( $booking_data['discount_id']        ?? 0 );
+
+                if ( $discount_id && $discount_amount > 0 && class_exists('GHM_Discounts') ) {
+                    GHM_Discounts::apply( $discount_id );
+                }
+
+                $booking_id = GHM_Bookings::create_booking(array_merge($booking_data, array(
+                    'customer_id'=>$customer_id,'total_amount'=>$amount,'discount_amount'=>$discount_amount,
+                    'status'=>'confirmed','payment_status'=>'paid',
+                )));
+
+                if ( !is_wp_error($booking_id) ) {
+                    GHM_Payments::record_payment(array(
+                        'booking_id'    =>$booking_id,
+                        'amount'        =>(float)$body['data']['amount'],
+                        'currency'      =>$body['data']['currency'] ?? get_option('ghm_currency','NGN'),
+                        'method'        =>'online','transaction_id'=>$tx_ref,
+                        'notes'         =>'Flutterwave webhook',
+                    ));
+                }
+            }
+
+            delete_transient('ghm_flw_pending_'.$tx_ref);
         }
         http_response_code(200); exit('OK');
     }

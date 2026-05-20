@@ -374,8 +374,7 @@
             $.post(ghmPublic.ajax_url, {
               action    : 'ghm_paystack_verify',
               nonce     : ghmPublic.nonce,
-              reference : response.reference,
-              booking_id: d.booking_id
+              reference : response.reference
             })
             .done(verRes => {
               if (verRes.success) {
@@ -446,7 +445,7 @@
             $btn.html('<span class="ghm-pub-spinner"></span> Verifying…').prop('disabled',true);
             $.post(ghmPublic.ajax_url,{
               action:'ghm_flw_verify', nonce:ghmPublic.nonce,
-              tx_ref:response.tx_ref, transaction_id:response.transaction_id, booking_id:d.booking_id
+              tx_ref:response.tx_ref, transaction_id:response.transaction_id
             })
             .done(vr => {
               if (vr.success) { this.showFlwSuccess(vr.data, formData, sym); }
