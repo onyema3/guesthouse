@@ -48,6 +48,7 @@ require_once GHM_PLUGIN_DIR . 'includes/modules/class-ghm-deposits.php';
 require_once GHM_PLUGIN_DIR . 'includes/modules/class-ghm-flutterwave.php';
 require_once GHM_PLUGIN_DIR . 'includes/modules/class-ghm-scheduler.php';
 require_once GHM_PLUGIN_DIR . 'includes/modules/class-ghm-utilities.php';
+require_once GHM_PLUGIN_DIR . 'includes/modules/class-ghm-csp.php';
 
 /* ── Admin ───────────────────────────────────────────────────── */
 require_once GHM_PLUGIN_DIR . 'admin/class-ghm-admin.php';
