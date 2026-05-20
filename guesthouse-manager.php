@@ -10,7 +10,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'GHM_VERSION',     '3.2.2' );
+define( 'GHM_VERSION',     '3.2.3' );
 define( 'GHM_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'GHM_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'GHM_PLUGIN_FILE', __FILE__ );

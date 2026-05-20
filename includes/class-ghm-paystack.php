@@ -115,10 +115,16 @@ class GHM_Paystack {
         $discount_id     = absint( $data['discount_id'] ?? 0 );
         if ( $discount_id && class_exists('GHM_Discounts') ) {
             $discount_amount = (float)( $data['discount_amount'] ?? 0 );
-            if ( $discount_amount > 0 && $discount_amount < $amount ) {
+            if ( $discount_amount > 0 && $discount_amount <= $amount ) {
                 $amount = round( $amount - $discount_amount, 2 );
                 GHM_Discounts::apply( $discount_id );
             }
+        }
+
+        // Also accept pre-calculated total from frontend if discount was applied client-side
+        $client_total = (float)( $data['total_amount'] ?? 0 );
+        if ( $client_total > 0 && $client_total < $amount ) {
+            $amount = $client_total;
         }
 
         // 3. Create a PENDING booking
