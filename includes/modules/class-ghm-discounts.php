@@ -8,7 +8,7 @@ class GHM_Discounts {
         $charset = $wpdb->get_charset_collate();
         $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}ghm_discounts (
             id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            code          VARCHAR(50) NOT NULL UNIQUE,
+            code          VARCHAR(50) NOT NULL,
             type          VARCHAR(20) NOT NULL DEFAULT 'percent',
             value         DECIMAL(10,2) NOT NULL DEFAULT 0.00,
             min_amount    DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -18,10 +18,10 @@ class GHM_Discounts {
             valid_until   DATE DEFAULT NULL,
             room_ids      LONGTEXT DEFAULT NULL,
             status        VARCHAR(20) NOT NULL DEFAULT 'active',
-            description   VARCHAR(200),
+            description   VARCHAR(200) DEFAULT NULL,
             created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY   (id),
-            UNIQUE KEY    code (code)
+            UNIQUE KEY code (code)
         ) $charset;";
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta( $sql );
@@ -75,6 +75,32 @@ class GHM_Discounts {
 
     public static function save( $data, $id = 0 ) {
         global $wpdb;
+
+        // If updating with only partial data (e.g., status toggle), fetch existing record first
+        if ( $id > 0 && empty( $data['code'] ) ) {
+            $existing = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}ghm_discounts WHERE id = %d", $id
+            ) );
+            if ( ! $existing ) {
+                return new WP_Error( 'not_found', 'Discount not found.' );
+            }
+            // Only update fields that were actually provided
+            $update = array();
+            if ( isset( $data['status'] ) )      $update['status']      = sanitize_text_field( $data['status'] );
+            if ( isset( $data['type'] ) )        $update['type']        = sanitize_text_field( $data['type'] );
+            if ( isset( $data['value'] ) )       $update['value']       = (float) $data['value'];
+            if ( isset( $data['min_amount'] ) )  $update['min_amount']  = (float) $data['min_amount'];
+            if ( isset( $data['description'] ) ) $update['description'] = sanitize_text_field( $data['description'] );
+            if ( array_key_exists( 'max_uses', $data ) )    $update['max_uses']    = !empty($data['max_uses']) ? absint($data['max_uses']) : null;
+            if ( array_key_exists( 'valid_from', $data ) )  $update['valid_from']  = !empty($data['valid_from'])  ? sanitize_text_field($data['valid_from'])  : null;
+            if ( array_key_exists( 'valid_until', $data ) ) $update['valid_until'] = !empty($data['valid_until']) ? sanitize_text_field($data['valid_until']) : null;
+
+            if ( ! empty( $update ) ) {
+                $wpdb->update( $wpdb->prefix . 'ghm_discounts', $update, array( 'id' => $id ) );
+            }
+            return $id;
+        }
+
         $fields = array(
             'code'        => strtoupper( sanitize_text_field( $data['code'] ) ),
             'type'        => sanitize_text_field( $data['type']        ?? 'percent' ),
@@ -86,8 +112,29 @@ class GHM_Discounts {
             'status'      => sanitize_text_field( $data['status']      ?? 'active' ),
             'description' => sanitize_text_field( $data['description'] ?? '' ),
         );
-        if ( $id > 0 ) { $wpdb->update( $wpdb->prefix.'ghm_discounts', $fields, array('id'=>$id) ); return $id; }
-        $wpdb->insert( $wpdb->prefix.'ghm_discounts', $fields );
+
+        if ( $id > 0 ) {
+            $wpdb->update( $wpdb->prefix . 'ghm_discounts', $fields, array( 'id' => $id ) );
+            return $id;
+        }
+
+        // Validate required field for new inserts
+        if ( empty( $fields['code'] ) ) {
+            return new WP_Error( 'missing_code', 'Discount code is required.' );
+        }
+
+        // Check for duplicate code
+        $exists = $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}ghm_discounts WHERE code = %s", $fields['code']
+        ) );
+        if ( $exists ) {
+            return new WP_Error( 'duplicate_code', 'A discount with this code already exists.' );
+        }
+
+        $result = $wpdb->insert( $wpdb->prefix . 'ghm_discounts', $fields );
+        if ( $result === false ) {
+            return new WP_Error( 'db_error', 'Failed to save discount. Please try again.' );
+        }
         return $wpdb->insert_id;
     }
 
