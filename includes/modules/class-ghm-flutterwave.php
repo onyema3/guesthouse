@@ -22,6 +22,10 @@ class GHM_Flutterwave {
         add_action('wp_ajax_ghm_flw_callback',        array(__CLASS__,'handle_callback'));
         add_action('wp_ajax_nopriv_ghm_flw_callback', array(__CLASS__,'handle_callback'));
 
+        // AJAX: initialise balance payment from guest portal (redirect flow)
+        add_action('wp_ajax_ghm_flw_init_balance',        array(__CLASS__,'ajax_init_balance'));
+        add_action('wp_ajax_nopriv_ghm_flw_init_balance', array(__CLASS__,'ajax_init_balance'));
+
         // Webhook
         add_action('wp_ajax_nopriv_ghm_flw_webhook',array(__CLASS__,'handle_webhook'));
         add_action('wp_ajax_ghm_flw_webhook',       array(__CLASS__,'handle_webhook'));
@@ -183,16 +187,52 @@ class GHM_Flutterwave {
         $tx_ref = sanitize_text_field( $_GET['tx_ref'] ?? '' );
         $trx_id = sanitize_text_field( $_GET['transaction_id'] ?? '' );
         $status = sanitize_text_field( $_GET['status'] ?? '' );
+        $is_balance = isset( $_GET['balance'] ) && $_GET['balance'] === '1';
 
         if ( ! $tx_ref ) {
             wp_die( 'Missing transaction reference. Please contact support.', 'Payment Error', array( 'response' => 400 ) );
         }
 
-        // If Flutterwave tells us it was cancelled
         if ( $status === 'cancelled' ) {
             wp_redirect( home_url( '/?ghm_payment=cancelled&gateway=flutterwave&ref=' . urlencode($tx_ref) ) );
             exit;
         }
+
+        // ── Balance payment callback ──
+        if ( $is_balance ) {
+            $balance_data = get_transient( 'ghm_flw_balance_' . $tx_ref );
+            if ( ! $balance_data ) {
+                wp_redirect( home_url( '/?ghm_payment=already_processed&ref=' . urlencode($tx_ref) ) );
+                exit;
+            }
+
+            $result = self::verify_on_flutterwave( $trx_id ?: $tx_ref );
+            if ( is_wp_error( $result ) || ( $result['status'] ?? '' ) !== 'successful' ) {
+                delete_transient( 'ghm_flw_balance_' . $tx_ref );
+                wp_redirect( home_url( '/?ghm_payment=failed&gateway=flutterwave&ref=' . urlencode($tx_ref) ) );
+                exit;
+            }
+
+            $booking_id  = (int) $balance_data['booking_id'];
+            $amount_paid = (float) $result['amount'];
+
+            GHM_Payments::record_payment( array(
+                'booking_id'     => $booking_id,
+                'amount'         => $amount_paid,
+                'currency'       => $result['currency'] ?? get_option( 'ghm_currency', 'NGN' ),
+                'method'         => 'online',
+                'transaction_id' => $tx_ref,
+                'notes'          => 'Flutterwave portal balance payment: ' . ( $result['payment_type'] ?? '' ),
+            ) );
+
+            delete_transient( 'ghm_flw_balance_' . $tx_ref );
+
+            $booking = GHM_Bookings::get_booking( $booking_id );
+            wp_redirect( home_url( '/?ghm_payment=success&gateway=flutterwave&ref=' . urlencode($booking->booking_ref) . '&amount=' . $amount_paid ) );
+            exit;
+        }
+
+        // ── New booking payment callback ──
 
         // Retrieve stored booking data
         $booking_data = get_transient( 'ghm_flw_pending_' . $tx_ref );
@@ -268,6 +308,95 @@ class GHM_Flutterwave {
 
         // Redirect to confirmation
         wp_redirect( home_url( '/?ghm_payment=success&gateway=flutterwave&ref=' . urlencode($booking->booking_ref) . '&amount=' . $amount_paid ) );
+        exit;
+    }
+
+    /* ── AJAX: Initialise Balance Payment (Portal Redirect) ───── */
+
+    public static function ajax_init_balance() {
+        if ( ! check_ajax_referer( 'ghm_public_nonce', 'nonce', false ) ) {
+            wp_send_json_error( array( 'message' => 'Security check failed.' ) ); exit;
+        }
+        if ( ! self::is_enabled() ) {
+            wp_send_json_error( array( 'message' => 'Flutterwave not configured.' ) ); exit;
+        }
+
+        $booking_id = absint( $_POST['booking_id'] ?? 0 );
+        $amount     = floatval( $_POST['amount'] ?? 0 );
+        $email      = sanitize_email( $_POST['email'] ?? '' );
+        $name       = sanitize_text_field( $_POST['name'] ?? '' );
+        $phone      = sanitize_text_field( $_POST['phone'] ?? '' );
+        $ref        = sanitize_text_field( $_POST['ref'] ?? '' );
+
+        if ( ! $booking_id || $amount <= 0 || ! $email ) {
+            wp_send_json_error( array( 'message' => 'Missing required parameters.' ) ); exit;
+        }
+
+        $booking = GHM_Bookings::get_booking( $booking_id );
+        if ( ! $booking ) {
+            wp_send_json_error( array( 'message' => 'Booking not found.' ) ); exit;
+        }
+
+        $currency = strtoupper( get_option( 'ghm_currency', 'NGN' ) );
+        $tx_ref   = 'PORTAL-FLW-' . strtoupper( wp_generate_password( 6, false ) ) . '-' . time();
+
+        // Store for callback
+        set_transient( 'ghm_flw_balance_' . $tx_ref, array(
+            'booking_id' => $booking_id,
+            'amount'     => $amount,
+        ), 3 * HOUR_IN_SECONDS );
+
+        $callback_url = add_query_arg( array(
+            'action'  => 'ghm_flw_callback',
+            'balance' => '1',
+        ), admin_url( 'admin-ajax.php' ) );
+
+        $hotel_name = get_option( 'ghm_hotel_name', get_bloginfo('name') );
+
+        $payload = array(
+            'tx_ref'          => $tx_ref,
+            'amount'          => $amount,
+            'currency'        => $currency,
+            'redirect_url'    => $callback_url,
+            'payment_options' => 'card,banktransfer,ussd,mobilemoney',
+            'customer'        => array(
+                'email'        => $email,
+                'name'         => $name,
+                'phone_number' => $phone,
+            ),
+            'customizations'  => array(
+                'title'       => $hotel_name,
+                'description' => 'Balance payment for booking ' . $ref,
+            ),
+            'meta'            => array(
+                'booking_ref' => $ref,
+                'booking_id'  => $booking_id,
+                'type'        => 'balance_payment',
+            ),
+        );
+
+        $response = wp_remote_post( self::API_BASE . '/payments', array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . self::secret_key(),
+                'Content-Type'  => 'application/json',
+            ),
+            'body'    => wp_json_encode( $payload ),
+            'timeout' => 30,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error( array( 'message' => 'Could not connect to Flutterwave.' ) ); exit;
+        }
+
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+        if ( ! $body || ( $body['status'] ?? '' ) !== 'success' ) {
+            wp_send_json_error( array( 'message' => $body['message'] ?? 'Flutterwave initialization failed.' ) ); exit;
+        }
+
+        wp_send_json_success( array(
+            'payment_link' => $body['data']['link'],
+            'tx_ref'       => $tx_ref,
+        ) );
         exit;
     }
 

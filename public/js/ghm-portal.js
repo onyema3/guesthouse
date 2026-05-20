@@ -1,11 +1,10 @@
-/* GuestHouse Manager – Guest Portal JS */
+/* GuestHouse Manager – Guest Portal JS v2.0 (Redirect Payment Flow) */
 (function($){
   'use strict';
 
   const Portal = {
 
     init() {
-      this.ensurePaymentSDKs();
       this.bindLogin();
       this.bindLogout();
       this.bindTabs();
@@ -14,35 +13,6 @@
       this.bindReviewForm();
       this.bindPaystackBalance();
       this.bindFlutterwaveBalance();
-    },
-
-    /* ─── Defensive Payment-SDK Loader ─────────────────────────
-     * See note in ghm-public.js. Mirrored here so the portal's
-     * Pay-Balance buttons work even when a caching/consent plugin
-     * suppresses the enqueued external scripts.
-     * ─────────────────────────────────────────────────────────── */
-    ensurePaymentSDKs() {
-      const ensure = (isLoaded, src) => {
-        if (isLoaded()) return;
-        if (document.querySelector('script[src="' + src + '"]')) return;
-        const s = document.createElement('script');
-        s.src   = src;
-        s.async = true;
-        document.head.appendChild(s);
-      };
-
-      if (typeof ghmPaystack !== 'undefined' && ghmPaystack.enabled) {
-        ensure(
-          () => typeof PaystackPop !== 'undefined' && typeof PaystackPop.setup === 'function',
-          'https://js.paystack.co/v1/inline.js'
-        );
-      }
-      if (typeof ghmFlutterwave !== 'undefined' && ghmFlutterwave.enabled) {
-        ensure(
-          () => typeof FlutterwaveCheckout !== 'undefined',
-          'https://checkout.flutterwave.com/v3.js'
-        );
-      }
     },
 
     /* ─── Login ──────────────────────────────────────────────── */
@@ -75,7 +45,6 @@
       })
       .done(res => {
         if (res.success) {
-          // Reload page to show dashboard
           window.location.reload();
         } else {
           this.showAlert((res.data ? res.data.message : '') || 'Login failed. Please check your details.', 'error');
@@ -134,7 +103,6 @@
         });
       });
 
-      // Set all star pickers to default value of 5
       $('.ghm-portal-star-picker').each(function(){
         $(this).find('.ghm-star').css('color', '#f59e0b');
       });
@@ -161,7 +129,7 @@
         .done(res => {
           $btn.prop('disabled', false).text('Send Request to Front Desk');
           if (res.success) {
-            this.showAlert('✓ ' + ((res.data ? res.data.message : '') || 'Request sent!'), 'success');
+            this.showAlert('&#10003; ' + ((res.data ? res.data.message : '') || 'Request sent!'), 'success');
             $('#ghm-service-message').val('');
             $('input[name="service_type"]').prop('checked', false);
             setTimeout(() => window.location.reload(), 1500);
@@ -201,7 +169,7 @@
         $.post(ghmPortal.ajax_url, data)
           .done(res => {
             if (res.success) {
-              this.showAlert('✓ ' + ((res.data ? res.data.message : '') || 'Review submitted!'), 'success');
+              this.showAlert('&#10003; ' + ((res.data ? res.data.message : '') || 'Review submitted!'), 'success');
               setTimeout(() => window.location.reload(), 1500);
             } else {
               $btn.prop('disabled', false).text('Submit Review');
@@ -215,85 +183,54 @@
       });
     },
 
-    /* ─── Paystack Balance Payment ───────────────────────────── */
+    /* ─── Paystack Balance Payment (Redirect Flow) ───────────── */
     bindPaystackBalance() {
       $(document).on('click', '#ghm-portal-pay-btn', function(){
-        if (typeof PaystackPop === 'undefined' || typeof PaystackPop.setup !== 'function') {
-          alert('Paystack could not load (or wrong version). Please refresh and try again. If the problem persists, contact reception.');
-          return;
-        }
+        const $btn      = $(this);
+        const bookingId = $btn.data('booking');
+        const amount    = parseFloat($btn.data('amount'));
+        const email     = $btn.data('email');
+        const name      = ($btn.data('name') || '').toString();
+        const ref       = $btn.data('ref');
 
-        const $btn       = $(this);
-        const bookingId  = $btn.data('booking');
-        const amount     = parseFloat($btn.data('amount'));
-        const email      = $btn.data('email');
-        const name       = $btn.data('name').split(' ');
-        const ref        = $btn.data('ref');
-        const currency   = (ghmPortal.currency || '₦');
+        $btn.prop('disabled', true).text('Connecting to Paystack…');
 
-        // Get Paystack config from page (must be localised)
-        if (!window.ghmPaystack || !ghmPaystack.public_key) {
-          alert('Payment not configured. Please contact reception.');
-          return;
-        }
-
-        $btn.prop('disabled', true).text('Opening payment…');
-
-        try {
-        const handler = PaystackPop.setup({
-          key      : ghmPaystack.public_key,
-          email    : email,
-          amount   : Math.round(amount * 100),
-          currency : ghmPaystack.currency || 'NGN',
-          ref      : 'PORTAL-' + ref + '-' + Date.now(),
-          firstName: name[0] || '',
-          lastName : name[1] || '',
-          metadata : { custom_fields:[{ display_name:'Booking', variable_name:'booking_ref', value: ref }] },
-          onClose  : () => { $btn.prop('disabled', false).html('💳 Pay Balance with Paystack'); },
-          callback: (response) => {
-            $btn.text('Verifying…');
-            $.post(ghmPortal.ajax_url, {
-              action    : 'ghm_paystack_verify',
-              nonce     : ghmPortal.nonce,
-              reference : response.reference,
-              booking_id: bookingId,
-            })
-            .done(res => {
-              if (res.success) {
-                Portal.showAlert('✓ Payment successful! Your booking is confirmed.', 'success');
-                setTimeout(() => window.location.reload(), 1500);
-              } else {
-                Portal.showAlert((res.data ? res.data.message : '') || 'Verification failed. Contact reception with ref: ' + response.reference, 'error');
-                $btn.prop('disabled', false).html('💳 Pay Balance with Paystack');
-              }
-            })
-            .fail(() => {
-              Portal.showAlert('Could not verify payment. Contact reception with ref: ' + response.reference, 'error');
-              $btn.prop('disabled', false).html('💳 Pay Balance with Paystack');
-            });
+        // Call the server to initialize a Paystack transaction (redirect flow)
+        const nonce = (window.ghmPublic && ghmPublic.nonce) ? ghmPublic.nonce : ghmPortal.nonce;
+        $.ajax({
+          url: ghmPortal.ajax_url,
+          type: 'POST',
+          dataType: 'json',
+          timeout: 30000,
+          data: {
+            action    : 'ghm_paystack_init_balance',
+            nonce     : nonce,
+            booking_id: bookingId,
+            amount    : amount,
+            email     : email,
+            name      : name,
+            ref       : ref,
           }
+        })
+        .done(res => {
+          if (res.success && res.data.authorization_url) {
+            $btn.text('Redirecting to Paystack…');
+            window.location.href = res.data.authorization_url;
+          } else {
+            Portal.showAlert((res.data ? res.data.message : '') || 'Could not initialise payment. Please try again.', 'error');
+            $btn.prop('disabled', false).html('&#128179; Pay Balance with Paystack');
+          }
+        })
+        .fail(() => {
+          Portal.showAlert('Network error. Please try again.', 'error');
+          $btn.prop('disabled', false).html('&#128179; Pay Balance with Paystack');
         });
-        handler.openIframe();
-        } catch(e) {
-          console.error('Paystack error:', e);
-          alert('Could not open the Paystack payment window. Please refresh and try again, or contact reception.');
-          $btn.prop('disabled', false).html('💳 Pay Balance with Paystack');
-        }
       });
     },
 
-    /* ─── Flutterwave Balance Payment ────────────────────────── */
+    /* ─── Flutterwave Balance Payment (Redirect Flow) ────────── */
     bindFlutterwaveBalance() {
       $(document).on('click', '#ghm-portal-pay-flw-btn', function(){
-        if (typeof FlutterwaveCheckout === 'undefined') {
-          alert('Flutterwave not loaded. Please refresh and try again.');
-          return;
-        }
-        if (!window.ghmFlutterwave || !ghmFlutterwave.public_key) {
-          alert('Flutterwave not configured. Please contact reception.');
-          return;
-        }
-
         const $btn      = $(this);
         const bookingId = $btn.data('booking');
         const amount    = parseFloat($btn.data('amount'));
@@ -301,50 +238,38 @@
         const fullName  = ($btn.data('name') || '').toString();
         const phone     = ($btn.data('phone') || '').toString();
         const ref       = $btn.data('ref');
-        const origLabel = $btn.html();
-        const tx_ref    = 'PORTAL-FLW-' + ref + '-' + Date.now();
 
-        $btn.prop('disabled', true).text('Opening payment…');
+        $btn.prop('disabled', true).text('Connecting to Flutterwave…');
 
-        FlutterwaveCheckout({
-          public_key: ghmFlutterwave.public_key,
-          tx_ref    : tx_ref,
-          amount    : amount,
-          currency  : ghmFlutterwave.currency || 'NGN',
-          payment_options: 'card,banktransfer,ussd,mobilemoneyghana,mobilemoneyrwanda,mobilemoneyzambia,mpesa',
-          customer: { email: email, name: fullName, phone_number: phone },
-          customizations: {
-            title      : 'Booking Balance Payment',
-            description: 'Balance for booking ' + ref,
-          },
-          meta: { booking_ref: ref, booking_id: bookingId },
-          onclose: function(){
-            $btn.prop('disabled', false).html(origLabel);
-          },
-          callback: function(response){
-            $btn.text('Verifying…');
-            const verifyNonce = (window.ghmPublic && ghmPublic.nonce) ? ghmPublic.nonce : ghmPortal.nonce;
-            $.post(ghmPortal.ajax_url, {
-              action        : 'ghm_flw_verify_balance',
-              nonce         : verifyNonce,
-              tx_ref        : response.tx_ref || tx_ref,
-              transaction_id: response.transaction_id || '',
-              booking_id    : bookingId,
-            })
-            .done(res => {
-              if (res.success) {
-                Portal.showAlert('✓ Payment successful! Your booking is confirmed.', 'success');
-                setTimeout(() => window.location.reload(), 1500);
-              } else {
-                Portal.showAlert((res.data ? res.data.message : '') || 'Verification failed. Contact reception with ref: ' + tx_ref, 'error');
-                $btn.prop('disabled', false).html(origLabel);
-              }
-            })
-            .fail(() => {
-              Portal.showAlert('Could not verify payment. Contact reception with ref: ' + tx_ref, 'error');
-              $btn.prop('disabled', false).html(origLabel);
-            });
+        const nonce = (window.ghmPublic && ghmPublic.nonce) ? ghmPublic.nonce : ghmPortal.nonce;
+        $.ajax({
+          url: ghmPortal.ajax_url,
+          type: 'POST',
+          dataType: 'json',
+          timeout: 30000,
+          data: {
+            action    : 'ghm_flw_init_balance',
+            nonce     : nonce,
+            booking_id: bookingId,
+            amount    : amount,
+            email     : email,
+            name      : fullName,
+            phone     : phone,
+            ref       : ref,
           }
+        })
+        .done(res => {
+          if (res.success && res.data.payment_link) {
+            $btn.text('Redirecting to Flutterwave…');
+            window.location.href = res.data.payment_link;
+          } else {
+            Portal.showAlert((res.data ? res.data.message : '') || 'Could not initialise payment. Please try again.', 'error');
+            $btn.prop('disabled', false).html('&#128179; Pay Balance with Flutterwave');
+          }
+        })
+        .fail(() => {
+          Portal.showAlert('Network error. Please try again.', 'error');
+          $btn.prop('disabled', false).html('&#128179; Pay Balance with Flutterwave');
         });
       });
     },

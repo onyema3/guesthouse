@@ -119,13 +119,13 @@ class GHM_Guest_Portal {
             'currency' => get_option( 'ghm_currency_symbol', '₦' ),
         ) );
 
-        // Paystack for balance payment in portal
+        // Paystack for balance payment in portal (redirect flow — no external SDK needed)
         if ( class_exists('GHM_Paystack') && GHM_Paystack::is_enabled() ) {
-            wp_enqueue_script('paystack-inline','https://js.paystack.co/v1/inline.js',array(),null,true);
             wp_localize_script('ghm-portal','ghmPaystack',array(
                 'enabled'    => true,
                 'public_key' => GHM_Paystack::public_key(),
                 'currency'   => strtoupper(get_option('ghm_currency','NGN')),
+                'mode'       => 'redirect',
             ));
             // Also make available to ghm-public nonce for verify calls
             wp_localize_script('ghm-portal','ghmPublic',array(
@@ -134,13 +134,13 @@ class GHM_Guest_Portal {
             ));
         }
 
-        // Flutterwave for balance payment in portal
+        // Flutterwave for balance payment in portal (redirect flow — no external SDK needed)
         if ( class_exists('GHM_Flutterwave') && GHM_Flutterwave::is_enabled() ) {
-            wp_enqueue_script('flutterwave-inline','https://checkout.flutterwave.com/v3.js',array(),null,true);
             wp_localize_script('ghm-portal','ghmFlutterwave',array(
                 'enabled'    => true,
                 'public_key' => GHM_Flutterwave::public_key(),
                 'currency'   => strtoupper(get_option('ghm_currency','NGN')),
+                'mode'       => 'redirect',
             ));
             // Ensure the public nonce is available even if Paystack isn't enabled
             wp_localize_script('ghm-portal','ghmPublic',array(
