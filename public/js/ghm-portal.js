@@ -188,8 +188,8 @@
     /* ─── Paystack Balance Payment ───────────────────────────── */
     bindPaystackBalance() {
       $(document).on('click', '#ghm-portal-pay-btn', function(){
-        if (typeof PaystackPop === 'undefined') {
-          alert('Paystack not loaded. Please refresh and try again.');
+        if (typeof PaystackPop === 'undefined' || typeof PaystackPop.setup !== 'function') {
+          alert('Paystack could not load (or wrong version). Please refresh and try again. If the problem persists, contact reception.');
           return;
         }
 
@@ -209,6 +209,7 @@
 
         $btn.prop('disabled', true).text('Opening payment…');
 
+        try {
         const handler = PaystackPop.setup({
           key      : ghmPaystack.public_key,
           email    : email,
@@ -243,6 +244,11 @@
           }
         });
         handler.openIframe();
+        } catch(e) {
+          console.error('Paystack error:', e);
+          alert('Could not open the Paystack payment window. Please refresh and try again, or contact reception.');
+          $btn.prop('disabled', false).html('💳 Pay Balance with Paystack');
+        }
       });
     },
 
