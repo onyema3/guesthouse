@@ -209,7 +209,7 @@
 
         $btn.prop('disabled', true).text('Opening payment…');
 
-        const popup = new PaystackPop();
+        const popup = (typeof PaystackPop === 'function') ? new PaystackPop() : PaystackPop;
         popup.newTransaction({
           key      : ghmPaystack.public_key,
           email    : email,
