@@ -316,6 +316,19 @@ class GHM_Guest_Portal {
     /* ── Shortcode render ────────────────────────────────────────── */
 
     public static function render( $atts ) {
+        // Tell LiteSpeed Cache (and other page caches) to never cache this page.
+        // The portal content is session-dependent — caching it would show the
+        // wrong state (login form vs dashboard) to guests.
+        if ( ! defined( 'LSCACHE_NO_CACHE' ) ) {
+            define( 'LSCACHE_NO_CACHE', true );
+        }
+        // Also set headers that prevent any proxy/CDN/browser caching
+        if ( ! headers_sent() ) {
+            header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
+            header( 'Pragma: no-cache' );
+            header( 'X-LiteSpeed-Cache-Control: no-cache' );
+        }
+
         $booking_id = self::get_session_booking_id();
         $booking    = $booking_id ? GHM_Bookings::get_booking( $booking_id ) : null;
         $customer   = $booking    ? GHM_Customers::get_customer( $booking->customer_id ) : null;

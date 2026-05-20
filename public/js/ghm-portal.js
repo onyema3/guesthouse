@@ -45,7 +45,10 @@
       })
       .done(res => {
         if (res.success) {
-          window.location.reload();
+          // Use cache-busting redirect to bypass LiteSpeed page cache
+          const url = new URL(window.location.href);
+          url.searchParams.set('logged_in', Date.now());
+          window.location.href = url.toString();
         } else {
           this.showAlert((res.data ? res.data.message : '') || 'Login failed. Please check your details.', 'error');
           $btn.prop('disabled', false).text('Access My Booking');
