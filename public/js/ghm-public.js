@@ -1,4 +1,4 @@
-/* GuestHouse Manager – Public JS v1.3 */
+/* GuestHouse Manager – Public JS v2.0 (Redirect Payment Flow) */
 (function($){
   'use strict';
 
@@ -7,6 +7,79 @@
     init() {
       this.bindBookingForm();
       this.bindRoomCards();
+      this.handlePaymentReturn();
+    },
+
+    /* ─── Handle Payment Return (success/failed/cancelled) ───── */
+    handlePaymentReturn() {
+      const params = new URLSearchParams(window.location.search);
+      const status = params.get('ghm_payment');
+      if (!status) return;
+
+      const ref     = params.get('ref') || '';
+      const gateway = params.get('gateway') || '';
+      const amount  = params.get('amount') || '';
+      const sym     = $('#ghm-currency-symbol').val() || '';
+
+      // Hide the booking form if it exists
+      $('#ghm-public-booking-form').hide();
+
+      let html = '';
+
+      if (status === 'success') {
+        const gwLabel = gateway === 'flutterwave' ? 'Flutterwave' : 'Paystack';
+        const gwColor = gateway === 'flutterwave' ? '#FF6B00' : '#00C3F7';
+        html = `
+          <div class="ghm-confirmation-wrap">
+            <div class="ghm-confirmation-icon" style="background:linear-gradient(135deg,${gwColor},${gwColor}cc);">
+              <svg width="40" height="40" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="rgba(255,255,255,.2)"/>
+              <path d="M8 16l5 5 11-10" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+            </div>
+            <h2>Payment Successful!</h2>
+            <p>Your booking is confirmed and paid via <strong>${gwLabel}</strong>.</p>
+            <div class="ghm-conf-ref">${this._esc(ref)}</div>
+            <div class="ghm-conf-details">
+              ${amount ? `<div class="ghm-conf-row"><span class="conf-label">Amount Paid</span><span class="conf-value" style="color:#c9a84c;font-size:18px;">${sym}${parseFloat(amount).toFixed(2)}</span></div>` : ''}
+              <div class="ghm-conf-row"><span class="conf-label">Payment</span><span class="conf-value" style="color:#3ecf8e;font-weight:700;">&#10003; Paid via ${gwLabel}</span></div>
+            </div>
+            <p style="font-size:13px;color:#9ca3af;">A confirmation email has been sent to your email address.</p>
+            <a href="${location.pathname}" style="display:inline-block;margin-top:16px;color:#c9a84c;font-size:13px;">Make another booking &#8594;</a>
+          </div>`;
+      } else if (status === 'failed') {
+        html = `
+          <div class="ghm-confirmation-wrap">
+            <div class="ghm-confirmation-icon" style="background:#ef4444;">&#10007;</div>
+            <h2>Payment Failed</h2>
+            <p>Your payment could not be completed. No charge was made.</p>
+            ${ref ? `<p style="font-size:13px;color:#9ca3af;">Reference: ${this._esc(ref)}</p>` : ''}
+            <a href="${location.pathname}" style="display:inline-block;margin-top:16px;color:#c9a84c;font-size:13px;">&#8592; Try again</a>
+          </div>`;
+      } else if (status === 'cancelled') {
+        html = `
+          <div class="ghm-confirmation-wrap">
+            <div class="ghm-confirmation-icon" style="background:#f59e0b;">&#8617;</div>
+            <h2>Payment Cancelled</h2>
+            <p>You cancelled the payment. Your booking has not been confirmed.</p>
+            <a href="${location.pathname}" style="display:inline-block;margin-top:16px;color:#c9a84c;font-size:13px;">&#8592; Try again</a>
+          </div>`;
+      } else if (status === 'already_processed') {
+        html = `
+          <div class="ghm-confirmation-wrap">
+            <div class="ghm-confirmation-icon" style="background:#3ecf8e;">&#10003;</div>
+            <h2>Booking Already Confirmed</h2>
+            <p>This payment was already processed. Check your email for the confirmation.</p>
+            <a href="${location.pathname}" style="display:inline-block;margin-top:16px;color:#c9a84c;font-size:13px;">Make another booking &#8594;</a>
+          </div>`;
+      }
+
+      if (html) {
+        const $wrap = $('.ghm-booking-form-wrap');
+        if ($wrap.length) {
+          $wrap.html(html);
+        } else {
+          $('#ghm-form-alerts').after(html);
+        }
+      }
     },
 
     /* ─── Booking Form ─────────────────────────────────────────── */
@@ -89,9 +162,7 @@
           $('#ghm-pb-amount-value').text(sym + amt);
           $('#ghm-pb-total-amount').val(amt);
           $('#ghm-pb-amount-preview').show();
-          // Show discount section now that we have an amount
           $('#ghm-discount-section').show();
-          // Reset any applied discount
           $('#ghm-discount-result').hide();
           document.getElementById('ghm-discount-id').value = '';
           document.getElementById('ghm-discount-amount-field').value = '0';
@@ -125,24 +196,23 @@
           document.getElementById('ghm-discount-id').value            = d.discount_id;
           document.getElementById('ghm-discount-amount-field').value  = d.discount_amount;
           document.getElementById('ghm-pb-total-amount').value        = d.final_amount;
-          // Update display
           const disc = parseFloat(d.discount_amount).toFixed(2);
-          const final = parseFloat(d.final_amount).toFixed(2);
+          const final_ = parseFloat(d.final_amount).toFixed(2);
           $('#ghm-pb-amount-value').html(
             `<span style="text-decoration:line-through;opacity:.5;font-size:16px;">${sym}${parseFloat(amount).toFixed(2)}</span> ` +
-            `<span style="color:#3ecf8e;">${sym}${final}</span>`
+            `<span style="color:#3ecf8e;">${sym}${final_}</span>`
           );
           $res.removeClass('error').addClass('success')
-            .html(`✓ Code <strong>${this._esc(d.code)}</strong> applied — you save <strong>${sym}${disc}</strong>!`).show();
-          this.updateConfirmBtn($('input[name="payment_option"]:checked').val()||'arrival', sym+final);
+            .html(`&#10003; Code <strong>${this._esc(d.code)}</strong> applied — you save <strong>${sym}${disc}</strong>!`).show();
+          this.updateConfirmBtn($('input[name="payment_option"]:checked').val()||'arrival', sym+final_);
         } else {
           document.getElementById('ghm-discount-id').value           = '';
           document.getElementById('ghm-discount-amount-field').value = '0';
-          $res.removeClass('success').addClass('error').text('✗ ' + ((res.data ? res.data.message : '') || 'Invalid code')).show();
+          $res.removeClass('success').addClass('error').text('&#10007; ' + ((res.data ? res.data.message : '') || 'Invalid code')).show();
         }
       }).fail(() => {
         $('#ghm-discount-apply-btn').prop('disabled',false).text('Apply');
-        $res.removeClass('success').addClass('error').text('✗ Network error. Please try again.').show();
+        $res.removeClass('success').addClass('error').text('&#10007; Network error. Please try again.').show();
       });
     },
 
@@ -159,7 +229,7 @@
         ).css({ background:'linear-gradient(135deg,#00C3F7,#0099CC)', color:'#fff' });
       } else if (payOpt === 'flutterwave' && typeof ghmFlutterwave !== 'undefined' && ghmFlutterwave.enabled) {
         $btn.html(
-          '🦋 Pay ' + amountText + ' with Flutterwave'
+          '&#127995; Pay ' + amountText + ' with Flutterwave'
         ).css({ background:'linear-gradient(135deg,#FF6B00,#FF8C00)', color:'#fff' });
       } else {
         $btn.html('&#10003; Confirm Booking').css({
@@ -169,20 +239,6 @@
     },
 
     /* ─── Step Validation ──────────────────────────────────────── */
-    /*
-     * FIX: Previous version used $el.val() which returns '' for un-touched
-     * datetime-local inputs on some browsers even when they have a default value
-     * set via HTML, and also flagged hidden inputs erroneously.
-     *
-     * New logic:
-     *  - Skip inputs that are hidden (type="hidden") — they are internal fields
-     *  - For select: invalid if value === '' (placeholder option selected)
-     *  - For text/email/tel/textarea: invalid if trimmed value is empty
-     *  - For datetime-local: invalid if value is empty string
-     *  - Checkbox: invalid if not checked
-     *  - Never block on elements that have display:none on their parent step
-     *    (shouldn't happen but guard anyway)
-     */
     validateStep(step) {
       let valid    = true;
       let $first   = null;
@@ -190,19 +246,13 @@
       $(`.ghm-form-step-body[data-step="${step}"] [required]`).each(function(){
         const el   = this;
         const type = (el.type || '').toLowerCase();
-
-        // Skip hidden inputs — these are internal (nonce, total_amount, etc.)
         if (type === 'hidden') return;
-
-        // Skip if the element itself or its parent step is not visible
         if (!$(el).is(':visible')) return;
 
         let empty = false;
-
         if (type === 'checkbox') {
           empty = !el.checked;
         } else {
-          // Works for select, text, email, tel, datetime-local, textarea
           const v = (el.value || '').trim();
           empty = (v === '' || v === '0');
         }
@@ -233,10 +283,7 @@
       $('.ghm-form-step').removeClass('active done');
       for (let i = 1; i < step; i++) $(`.ghm-form-step[data-step="${i}"]`).addClass('done');
       $(`.ghm-form-step[data-step="${step}"]`).addClass('active');
-
-      // Populate summary when arriving at step 3
       if (step === 3) this.populateSummary();
-
       const $form = $('#ghm-public-booking-form');
       if ($form.length) $('html,body').animate({ scrollTop: $form.offset().top - 40 }, 300);
     },
@@ -251,12 +298,10 @@
       const ln     = $('#ghm-pb-last-name').val()  || '';
       const email  = $('#ghm-pb-email').val()       || '';
 
-      // Use the hidden total_amount field as the source of truth for the final amount
       const finalAmount = parseFloat($('#ghm-pb-total-amount').val()) || 0;
       const discountAmt = parseFloat($('#ghm-discount-amount-field').val()) || 0;
       const originalAmt = finalAmount + discountAmt;
 
-      // Build display: show original struck-through + final if discount applied, otherwise just final
       let amountDisplay;
       let amountForBtn;
       if (discountAmt > 0) {
@@ -283,7 +328,6 @@
         `</table>`
       );
 
-      // Set initial button state
       const psEnabled = $('#ghm-paystack-enabled').val() === '1';
       const payOpt    = $('input[name="payment_option"]:checked').val()
                         || (psEnabled ? 'paystack' : 'arrival');
@@ -312,7 +356,7 @@
       }
     },
 
-    /* ─── Paystack Flow ────────────────────────────────────────── */
+    /* ─── Paystack Redirect Flow ───────────────────────────────── */
     initiatePaystackPayment() {
       const $btn = $('#ghm-confirm-btn');
       const sym  = $('#ghm-currency-symbol').val() || '';
@@ -328,13 +372,16 @@
       if (!formData.first_name) { this.showAlert('Please enter your first name.',      'error'); return; }
       if (!formData.email)      { this.showAlert('Please enter your email address.',   'error'); return; }
 
-      $btn.prop('disabled', true).html('<span class="ghm-pub-spinner"></span> Initialising Payment…');
+      $btn.prop('disabled', true).html('<span class="ghm-pub-spinner"></span> Connecting to Paystack…');
       this.clearAlerts();
 
-      $.post(ghmPublic.ajax_url, Object.assign({
-        action: 'ghm_paystack_init',
-        nonce : ghmPublic.nonce
-      }, formData))
+      $.ajax({
+        url     : ghmPublic.ajax_url,
+        type    : 'POST',
+        dataType: 'json',
+        timeout : 30000,
+        data    : Object.assign({ action: 'ghm_paystack_init', nonce: ghmPublic.nonce }, formData)
+      })
       .done(res => {
         if (!res.success) {
           this.showAlert((res.data ? res.data.message : '') || 'Could not initialise payment. Please try again.', 'error');
@@ -343,78 +390,25 @@
           return;
         }
 
-        const d = res.data;
-        $btn.html('<span class="ghm-pub-spinner"></span> Opening Paystack…');
-
-        try {
-        const handler = PaystackPop.setup({
-          key      : ghmPaystack.public_key,
-          email    : d.email,
-          amount   : d.amount,
-          currency : d.currency,
-          ref      : d.reference,
-          firstName: formData.first_name || '',
-          lastName : formData.last_name  || '',
-          phone    : formData.phone      || '',
-          label    : d.hotel_name,
-          metadata : {
-            custom_fields: [
-              { display_name:'Booking Ref', variable_name:'booking_ref', value: d.booking_ref },
-              { display_name:'Room',        variable_name:'room',        value: d.meta.room   },
-              { display_name:'Check-In',    variable_name:'check_in',    value: d.meta.check_in  },
-              { display_name:'Check-Out',   variable_name:'check_out',   value: d.meta.check_out },
-            ]
-          },
-          onClose: () => {
-            $btn.prop('disabled', false);
-            this.updateConfirmBtn('paystack', sym + parseFloat(formData.total_amount||0).toFixed(2));
-            this.showAlert('Payment cancelled. Your booking is held for 30 minutes — try again when ready.', 'info');
-          },
-          callback: (response) => {
-            $btn.html('<span class="ghm-pub-spinner"></span> Verifying Payment…').prop('disabled', true);
-            $.post(ghmPublic.ajax_url, {
-              action    : 'ghm_paystack_verify',
-              nonce     : ghmPublic.nonce,
-              reference : response.reference
-            })
-            .done(verRes => {
-              if (verRes.success) {
-                this.showPaystackSuccess(verRes.data, formData, sym);
-              } else {
-                this.showAlert(
-                  (verRes.data ? verRes.data.message : '') ||
-                  'Payment verification failed. Please contact us with reference: ' + response.reference,
-                  'error'
-                );
-                $btn.prop('disabled', false);
-                this.updateConfirmBtn('paystack', sym + parseFloat(formData.total_amount||0).toFixed(2));
-              }
-            })
-            .fail(() => {
-              this.showAlert('Could not verify payment. Contact us with reference: ' + response.reference, 'error');
-              $btn.prop('disabled', false);
-            });
-          }
-        });
-        handler.openIframe();
-        } catch(e) {
-          console.error('Paystack error:', e);
-          this.showAlert('Could not open payment window. Please disable ad-blockers and try again, or choose Pay on Arrival.', 'error');
-          $btn.prop('disabled', false);
-          this.updateConfirmBtn('paystack', sym + parseFloat(formData.total_amount||0).toFixed(2));
-        }
+        // Redirect to Paystack's hosted checkout page
+        $btn.html('<span class="ghm-pub-spinner"></span> Redirecting to Paystack…');
+        window.location.href = res.data.authorization_url;
       })
-      .fail(() => {
-        this.showAlert('Network error. Please check your connection and try again.', 'error');
+      .fail((jqXHR, textStatus) => {
+        const msg = textStatus === 'timeout'
+          ? 'Server is taking too long to respond. Please try again.'
+          : 'Network error. Please check your connection and try again.';
+        this.showAlert(msg, 'error');
         $btn.prop('disabled', false);
         this.updateConfirmBtn('paystack', sym + parseFloat(formData.total_amount||0).toFixed(2));
       });
     },
 
-    /* ─── Flutterwave Flow ──────────────────────────────────────── */
+    /* ─── Flutterwave Redirect Flow ────────────────────────────── */
     initiateFlutterwavePayment() {
-      const $btn    = $('#ghm-confirm-btn');
-      const sym     = $('#ghm-currency-symbol').val() || '';
+      const $btn = $('#ghm-confirm-btn');
+      const sym  = $('#ghm-currency-symbol').val() || '';
+
       const formData = {};
       $('#ghm-public-booking-form').serializeArray().forEach(({name,value}) => { formData[name]=value; });
 
@@ -423,10 +417,16 @@
       if (!formData.check_out)  { this.showAlert('Please set check-out date.','error'); return; }
       if (!formData.email)      { this.showAlert('Please enter your email.','error'); return; }
 
-      $btn.prop('disabled',true).html('<span class="ghm-pub-spinner"></span> Initialising…');
+      $btn.prop('disabled',true).html('<span class="ghm-pub-spinner"></span> Connecting to Flutterwave…');
       this.clearAlerts();
 
-      $.post(ghmPublic.ajax_url, Object.assign({action:'ghm_flw_init',nonce:ghmPublic.nonce}, formData))
+      $.ajax({
+        url     : ghmPublic.ajax_url,
+        type    : 'POST',
+        dataType: 'json',
+        timeout : 30000,
+        data    : Object.assign({action:'ghm_flw_init', nonce:ghmPublic.nonce}, formData)
+      })
       .done(res => {
         if (!res.success) {
           this.showAlert((res.data ? res.data.message : '')||'Could not initialise payment.','error');
@@ -434,75 +434,19 @@
           this.updateConfirmBtn('flutterwave', sym+parseFloat(formData.total_amount||0).toFixed(2));
           return;
         }
-        const d = res.data;
-        $btn.html('<span class="ghm-pub-spinner"></span> Opening Flutterwave…');
 
-        try {
-        FlutterwaveCheckout({
-          public_key    : ghmFlutterwave.public_key,
-          tx_ref        : d.tx_ref,
-          amount        : d.amount,
-          currency      : d.currency,
-          payment_options: 'card,banktransfer,ussd,mobilemoney',
-          customer      : { email:d.email, phone_number:d.phone||'', name:d.name },
-          customizations: { title:d.hotel_name, description:d.description },
-          meta          : { booking_ref:d.booking_ref },
-          callback: (response) => {
-            document.querySelectorAll('.flwpaymentmodal,.flwpaymentmodal-overlay').forEach(el=>el.remove());
-            $btn.html('<span class="ghm-pub-spinner"></span> Verifying…').prop('disabled',true);
-            $.post(ghmPublic.ajax_url,{
-              action:'ghm_flw_verify', nonce:ghmPublic.nonce,
-              tx_ref:response.tx_ref, transaction_id:response.transaction_id
-            })
-            .done(vr => {
-              if (vr.success) { this.showFlwSuccess(vr.data, formData, sym); }
-              else {
-                this.showAlert((vr.data ? vr.data.message : '')||'Verification failed. Contact us with ref: '+response.tx_ref,'error');
-                $btn.prop('disabled',false);
-                this.updateConfirmBtn('flutterwave', sym+parseFloat(formData.total_amount||0).toFixed(2));
-              }
-            })
-            .fail(()=>{ this.showAlert('Network error. Contact us with tx_ref: '+response.tx_ref,'error'); $btn.prop('disabled',false); });
-          },
-          onclose: () => {
-            $btn.prop('disabled',false);
-            this.updateConfirmBtn('flutterwave', sym+parseFloat(formData.total_amount||0).toFixed(2));
-            this.showAlert('Payment cancelled. Your booking is held — try again when ready.','info');
-          }
-        });
-        } catch(e) {
-          console.error('Flutterwave error:', e);
-          this.showAlert('Could not open Flutterwave payment window. Please disable ad-blockers and try again, or choose Pay on Arrival.', 'error');
-          $btn.prop('disabled', false);
-          this.updateConfirmBtn('flutterwave', sym+parseFloat(formData.total_amount||0).toFixed(2));
-        }
+        // Redirect to Flutterwave's hosted checkout page
+        $btn.html('<span class="ghm-pub-spinner"></span> Redirecting to Flutterwave…');
+        window.location.href = res.data.payment_link;
       })
-      .fail(()=>{ this.showAlert('Network error. Please try again.','error'); $btn.prop('disabled',false); });
-    },
-
-    showFlwSuccess(data, formData, sym) {
-      const roomName  = $('#ghm-pb-room option:selected').text().split('—')[0].trim();
-      const guestName = ((formData.first_name||'')+' '+(formData.last_name||'')).trim();
-      const amount    = parseFloat(formData.total_amount||data.amount||0).toFixed(2);
-      const html = `
-        <div class="ghm-confirmation-wrap">
-          <div class="ghm-confirmation-icon" style="background:linear-gradient(135deg,#FF6B00,#FF8C00);">
-            <svg width="40" height="40" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="rgba(255,255,255,.2)"/>
-            <path d="M8 16l5 5 11-10" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-          </div>
-          <h2>Payment Successful!</h2>
-          <p>Thank you, <strong>${this._esc(guestName)}</strong>. Booking confirmed via Flutterwave.</p>
-          <div class="ghm-conf-ref">${this._esc(data.booking_ref)}</div>
-          <div class="ghm-conf-details">
-            <div class="ghm-conf-row"><span class="conf-label">Room</span><span class="conf-value">${this._esc(roomName)}</span></div>
-            <div class="ghm-conf-row"><span class="conf-label">Check-In</span><span class="conf-value">${this._esc(formData.check_in||'')}</span></div>
-            <div class="ghm-conf-row"><span class="conf-label">Check-Out</span><span class="conf-value">${this._esc(formData.check_out||'')}</span></div>
-            <div class="ghm-conf-row"><span class="conf-label">Amount Paid</span><span class="conf-value" style="color:#c9a84c;font-size:18px;">${sym}${amount}</span></div>
-            <div class="ghm-conf-row"><span class="conf-label">Gateway</span><span class="conf-value" style="color:#FF6B00;font-weight:700;">✓ Flutterwave</span></div>
-          </div>
-          <a href="${location.pathname}" style="display:inline-block;margin-top:16px;color:#c9a84c;font-size:13px;">Make another booking &#8594;</a>
-        </div>`;
-      $('#ghm-public-booking-form').slideUp(300, function(){ $(this).after(html); });
+      .fail((jqXHR, textStatus) => {
+        const msg = textStatus === 'timeout'
+          ? 'Server is taking too long to respond. Please try again.'
+          : 'Network error. Please try again.';
+        this.showAlert(msg,'error');
+        $btn.prop('disabled',false);
+        this.updateConfirmBtn('flutterwave', sym+parseFloat(formData.total_amount||0).toFixed(2));
+      });
     },
 
     /* ─── Pay on Arrival ───────────────────────────────────────── */
@@ -530,35 +474,7 @@
         });
     },
 
-    /* ─── Success Screens ──────────────────────────────────────── */
-    showPaystackSuccess(data, formData, sym) {
-      const roomName  = $('#ghm-pb-room option:selected').text().split('—')[0].trim();
-      const guestName = ((formData.first_name||'') + ' ' + (formData.last_name||'')).trim();
-      const amount    = parseFloat(formData.total_amount || data.amount || 0).toFixed(2);
-
-      const html = `
-        <div class="ghm-confirmation-wrap">
-          <div class="ghm-confirmation-icon ghm-confirmation-icon--paystack">
-            <svg width="40" height="40" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="rgba(255,255,255,.2)"/>
-            <path d="M7 16h18M7 10h12M13 22h12" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>
-          </div>
-          <h2>Payment Successful!</h2>
-          <p>Thank you, <strong>${this._esc(guestName)}</strong>. Your booking is confirmed and paid.</p>
-          <div class="ghm-conf-ref">${this._esc(data.booking_ref)}</div>
-          <div class="ghm-conf-details">
-            <div class="ghm-conf-row"><span class="conf-label">Room / Space</span><span class="conf-value">${this._esc(roomName)}</span></div>
-            <div class="ghm-conf-row"><span class="conf-label">Check-In</span><span class="conf-value">${this._esc(formData.check_in||'')}</span></div>
-            <div class="ghm-conf-row"><span class="conf-label">Check-Out</span><span class="conf-value">${this._esc(formData.check_out||'')}</span></div>
-            <div class="ghm-conf-row"><span class="conf-label">Amount Paid</span><span class="conf-value" style="color:#c9a84c;font-size:18px;">${sym}${amount}</span></div>
-            <div class="ghm-conf-row"><span class="conf-label">Payment</span><span class="conf-value" style="color:#3ecf8e;font-weight:700;">✓ Paid via Paystack</span></div>
-          </div>
-          <p style="font-size:13px;color:#9ca3af;">A confirmation email has been sent to <strong>${this._esc(formData.email||'')}</strong>.</p>
-          <a href="${location.pathname}" style="display:inline-block;margin-top:16px;color:#c9a84c;font-size:13px;">Make another booking &#8594;</a>
-        </div>`;
-
-      $('#ghm-public-booking-form').slideUp(300, function(){ $(this).after(html); });
-    },
-
+    /* ─── Arrival Success Screen ───────────────────────────────── */
     showArrivalSuccess(data, $form) {
       const sym       = $('#ghm-currency-symbol').val() || '';
       const roomName  = $('#ghm-pb-room option:selected').text().split('—')[0].trim();
@@ -569,7 +485,7 @@
 
       const html = `
         <div class="ghm-confirmation-wrap">
-          <div class="ghm-confirmation-icon">✓</div>
+          <div class="ghm-confirmation-icon">&#10003;</div>
           <h2>Booking Confirmed!</h2>
           <p>Thank you, <strong>${this._esc(guestName)}</strong>. Your reservation is secured.</p>
           <div class="ghm-conf-ref">${this._esc(data.booking_ref)}</div>
@@ -581,7 +497,7 @@
             <div class="ghm-conf-row"><span class="conf-label">Payment</span><span class="conf-value" style="color:#f59e0b;">Due on arrival</span></div>
           </div>
           <div class="ghm-alert info" style="margin-top:14px;text-align:left;">
-            💳 Please bring payment when you check in and quote your booking reference at reception.
+            Please bring payment when you check in and quote your booking reference at reception.
           </div>
           <a href="${location.pathname}" style="display:inline-block;margin-top:16px;color:#c9a84c;font-size:13px;">Make another booking &#8594;</a>
         </div>`;
@@ -591,7 +507,7 @@
 
     /* ─── Alerts ───────────────────────────────────────────────── */
     showAlert(msg, type='info') {
-      const icon = {success:'✓', error:'✗', info:'ℹ'}[type] || 'ℹ';
+      const icon = {success:'&#10003;', error:'&#10007;', info:'&#8505;'}[type] || '&#8505;';
       $('#ghm-form-alerts').html(`<div class="ghm-alert ${type}">${icon} ${msg}</div>`);
       $('html,body').animate({ scrollTop: (($('#ghm-form-alerts').offset() ? $('#ghm-form-alerts').offset().top : 0)||0) - 20 }, 200);
     },

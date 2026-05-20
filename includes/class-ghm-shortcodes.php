@@ -16,36 +16,31 @@ class GHM_Shortcodes {
     public static function enqueue_scripts() {
         wp_enqueue_style( 'ghm-public', GHM_PLUGIN_URL . 'public/css/ghm-public.css', array(), GHM_VERSION );
 
-        // Paystack inline JS must load before our public script
-        $deps = array( 'jquery' );
-        if ( class_exists( 'GHM_Paystack' ) && GHM_Paystack::is_enabled() ) {
-            wp_enqueue_script( 'paystack-inline', 'https://js.paystack.co/v1/inline.js', array(), null, true );
-            $deps[] = 'paystack-inline';
-        }
-
-        wp_enqueue_script( 'ghm-public', GHM_PLUGIN_URL . 'public/js/ghm-public.js', $deps, GHM_VERSION, true );
+        // No external payment SDK scripts needed — redirect flow is used
+        wp_enqueue_script( 'ghm-public', GHM_PLUGIN_URL . 'public/js/ghm-public.js', array( 'jquery' ), GHM_VERSION, true );
 
         wp_localize_script( 'ghm-public', 'ghmPublic', array(
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'ghm_public_nonce' ),
         ) );
 
-        // Paystack config
+        // Paystack config (redirect mode — no inline.js needed)
         if ( class_exists( 'GHM_Paystack' ) && GHM_Paystack::is_enabled() ) {
             wp_localize_script( 'ghm-public', 'ghmPaystack', array(
                 'enabled'    => true,
                 'public_key' => GHM_Paystack::public_key(),
                 'currency'   => strtoupper( get_option( 'ghm_currency', 'NGN' ) ),
+                'mode'       => 'redirect',
             ) );
         }
 
-        // Flutterwave config
+        // Flutterwave config (redirect mode — no checkout.js needed)
         if ( class_exists( 'GHM_Flutterwave' ) && GHM_Flutterwave::is_enabled() ) {
-            wp_enqueue_script( 'flutterwave-inline', 'https://checkout.flutterwave.com/v3.js', array(), null, true );
             wp_localize_script( 'ghm-public', 'ghmFlutterwave', array(
                 'enabled'    => true,
                 'public_key' => GHM_Flutterwave::public_key(),
                 'currency'   => strtoupper( get_option( 'ghm_currency', 'NGN' ) ),
+                'mode'       => 'redirect',
             ) );
         }
     }

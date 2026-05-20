@@ -1,6 +1,7 @@
 <?php
 /**
  * Flutterwave Payment Gateway for GuestHouse Manager
+ * Uses the REDIRECT flow (Standard Payment API) to avoid CSP issues.
  * Covers Nigeria, Ghana, Kenya, South Africa, Uganda, Tanzania and more.
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -16,8 +17,16 @@ class GHM_Flutterwave {
         add_action('wp_ajax_nopriv_ghm_flw_verify', array(__CLASS__,'ajax_verify'));
         add_action('wp_ajax_ghm_flw_verify_balance',        array(__CLASS__,'ajax_verify_balance'));
         add_action('wp_ajax_nopriv_ghm_flw_verify_balance', array(__CLASS__,'ajax_verify_balance'));
+
+        // Callback endpoint: Flutterwave redirects back here after payment
+        add_action('wp_ajax_ghm_flw_callback',        array(__CLASS__,'handle_callback'));
+        add_action('wp_ajax_nopriv_ghm_flw_callback', array(__CLASS__,'handle_callback'));
+
+        // Webhook
         add_action('wp_ajax_nopriv_ghm_flw_webhook',array(__CLASS__,'handle_webhook'));
         add_action('wp_ajax_ghm_flw_webhook',       array(__CLASS__,'handle_webhook'));
+
+        // Enqueue — no external JS needed for redirect flow
         add_action('wp_enqueue_scripts',            array(__CLASS__,'maybe_enqueue'));
     }
 
@@ -39,14 +48,21 @@ class GHM_Flutterwave {
 
     public static function maybe_enqueue() {
         if ( !self::is_enabled() ) return;
-        wp_enqueue_script('flutterwave-inline','https://checkout.flutterwave.com/v3.js',array(),null,true);
+        // No external script needed for redirect flow!
         wp_localize_script('ghm-public','ghmFlutterwave',array(
             'enabled'    => true,
             'public_key' => self::public_key(),
             'currency'   => strtoupper(get_option('ghm_currency','NGN')),
+            'mode'       => 'redirect',
         ));
     }
 
+    /* ── AJAX: Initialise (Redirect Flow) ─────────────────────── */
+
+    /**
+     * Validates booking data, calls Flutterwave Standard Payment API,
+     * and returns the payment link for the frontend to redirect to.
+     */
     public static function ajax_init() {
         if (!check_ajax_referer('ghm_public_nonce','nonce',false)) {
             wp_send_json_error(array('message'=>'Security check failed.')); exit;
@@ -89,29 +105,173 @@ class GHM_Flutterwave {
 
         $tx_ref = 'GHM-FLW-' . strtoupper( wp_generate_password( 8, false ) ) . '-' . time();
 
-        // Store booking data in transient — booking created only after payment verification
+        // Store booking data in transient
         $booking_data = $data;
         $booking_data['calculated_amount'] = $amount;
         $booking_data['discount_amount']   = $discount_amount;
         $booking_data['discount_id']       = $discount_id;
         set_transient('ghm_flw_pending_'.$tx_ref, $booking_data, 3*HOUR_IN_SECONDS);
 
-        $room = GHM_Rooms::get_room( absint( $data['room_id'] ?? 0 ) );
+        $room       = GHM_Rooms::get_room( absint( $data['room_id'] ?? 0 ) );
+        $hotel_name = get_option('ghm_hotel_name', get_bloginfo('name'));
+        $currency   = strtoupper(get_option('ghm_currency','NGN'));
 
+        // Build callback URL
+        $callback_url = add_query_arg( 'action', 'ghm_flw_callback', admin_url( 'admin-ajax.php' ) );
+
+        // Call Flutterwave Standard Payment API
+        $payload = array(
+            'tx_ref'          => $tx_ref,
+            'amount'          => $amount,
+            'currency'        => $currency,
+            'redirect_url'    => $callback_url,
+            'payment_options' => 'card,banktransfer,ussd,mobilemoney',
+            'customer'        => array(
+                'email'        => $data['email'] ?? '',
+                'name'         => trim(($data['first_name']??'').' '.($data['last_name']??'')),
+                'phone_number' => $data['phone'] ?? '',
+            ),
+            'customizations'  => array(
+                'title'       => $hotel_name,
+                'description' => 'Booking — ' . ($room ? $room->name : ''),
+            ),
+            'meta'            => array(
+                'booking_ref' => '',
+                'tx_ref'      => $tx_ref,
+            ),
+        );
+
+        $response = wp_remote_post( self::API_BASE . '/payments', array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . self::secret_key(),
+                'Content-Type'  => 'application/json',
+            ),
+            'body'    => wp_json_encode( $payload ),
+            'timeout' => 30,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error( array( 'message' => 'Could not connect to Flutterwave. Please try again.' ) );
+            exit;
+        }
+
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        if ( ! $body || ( $body['status'] ?? '' ) !== 'success' ) {
+            $msg = $body['message'] ?? 'Flutterwave initialization failed.';
+            wp_send_json_error( array( 'message' => $msg ) );
+            exit;
+        }
+
+        // Return the payment link for the frontend to redirect to
         wp_send_json_success(array(
-            'tx_ref'      => $tx_ref,
-            'booking_ref' => '',
-            'booking_id'  => 0,
-            'amount'      => $amount,
-            'currency'    => strtoupper(get_option('ghm_currency','NGN')),
-            'email'       => $data['email'] ?? '',
-            'name'        => trim(($data['first_name']??'').' '.($data['last_name']??'')),
-            'phone'       => $data['phone'] ?? '',
-            'hotel_name'  => get_option('ghm_hotel_name',get_bloginfo('name')),
-            'description' => 'Booking — ' . ($room ? $room->name : ''),
+            'payment_link' => $body['data']['link'],
+            'tx_ref'       => $tx_ref,
+            'mode'         => 'redirect',
         ));
         exit;
     }
+
+    /* ── Callback: Flutterwave redirects back here ────────────── */
+
+    /**
+     * After the guest pays on Flutterwave's hosted page, they are redirected
+     * back to this URL with ?tx_ref=XXX&transaction_id=YYY&status=ZZZ.
+     * We verify the payment, create the booking, and redirect to confirmation.
+     */
+    public static function handle_callback() {
+        $tx_ref = sanitize_text_field( $_GET['tx_ref'] ?? '' );
+        $trx_id = sanitize_text_field( $_GET['transaction_id'] ?? '' );
+        $status = sanitize_text_field( $_GET['status'] ?? '' );
+
+        if ( ! $tx_ref ) {
+            wp_die( 'Missing transaction reference. Please contact support.', 'Payment Error', array( 'response' => 400 ) );
+        }
+
+        // If Flutterwave tells us it was cancelled
+        if ( $status === 'cancelled' ) {
+            wp_redirect( home_url( '/?ghm_payment=cancelled&gateway=flutterwave&ref=' . urlencode($tx_ref) ) );
+            exit;
+        }
+
+        // Retrieve stored booking data
+        $booking_data = get_transient( 'ghm_flw_pending_' . $tx_ref );
+        if ( ! $booking_data ) {
+            // Already processed (maybe by webhook)
+            wp_redirect( home_url( '/?ghm_payment=already_processed&ref=' . urlencode($tx_ref) ) );
+            exit;
+        }
+
+        // Verify on Flutterwave
+        $result = self::verify_on_flutterwave( $trx_id ?: $tx_ref );
+
+        if ( is_wp_error( $result ) ) {
+            wp_die( 'Payment verification failed: ' . esc_html( $result->get_error_message() ), 'Payment Error', array( 'response' => 500 ) );
+        }
+
+        if ( ( $result['status'] ?? '' ) !== 'successful' ) {
+            delete_transient( 'ghm_flw_pending_' . $tx_ref );
+            wp_redirect( home_url( '/?ghm_payment=failed&gateway=flutterwave&ref=' . urlencode($tx_ref) ) );
+            exit;
+        }
+
+        // Payment verified — create the booking
+        $customer = GHM_Customers::get_customer_by_email( $booking_data['email'] ?? '' );
+        if ( ! $customer ) {
+            $customer_id = GHM_Customers::save_customer( array(
+                'first_name' => $booking_data['first_name'] ?? '',
+                'last_name'  => $booking_data['last_name']  ?? '',
+                'email'      => $booking_data['email']       ?? '',
+                'phone'      => $booking_data['phone']       ?? '',
+            ) );
+            if ( is_wp_error( $customer_id ) ) {
+                wp_die( 'Payment received but booking creation failed. Contact support with ref: ' . esc_html($tx_ref), 'Booking Error' );
+            }
+        } else {
+            $customer_id = $customer->id;
+        }
+
+        $amount          = (float)( $booking_data['calculated_amount'] ?? 0 );
+        $discount_amount = (float)( $booking_data['discount_amount']   ?? 0 );
+        $discount_id     = absint( $booking_data['discount_id']        ?? 0 );
+
+        if ( $discount_id && $discount_amount > 0 && class_exists('GHM_Discounts') ) {
+            GHM_Discounts::apply( $discount_id );
+        }
+
+        $booking_id = GHM_Bookings::create_booking( array_merge( $booking_data, array(
+            'customer_id'     => $customer_id,
+            'total_amount'    => $amount,
+            'discount_amount' => $discount_amount,
+            'status'          => 'confirmed',
+            'payment_status'  => 'paid',
+        ) ) );
+
+        if ( is_wp_error( $booking_id ) ) {
+            wp_die( 'Payment received but booking creation failed. Contact support with ref: ' . esc_html($tx_ref), 'Booking Error' );
+        }
+
+        $amount_paid = (float) $result['amount'];
+
+        GHM_Payments::record_payment( array(
+            'booking_id'     => $booking_id,
+            'amount'         => $amount_paid,
+            'currency'       => $result['currency'] ?? get_option('ghm_currency','NGN'),
+            'method'         => 'online',
+            'transaction_id' => $tx_ref,
+            'notes'          => 'Flutterwave redirect payment: ' . ($result['payment_type']??'') . ' — ' . ($result['processor_response']??''),
+        ) );
+
+        delete_transient( 'ghm_flw_pending_' . $tx_ref );
+
+        $booking = GHM_Bookings::get_booking( $booking_id );
+
+        // Redirect to confirmation
+        wp_redirect( home_url( '/?ghm_payment=success&gateway=flutterwave&ref=' . urlencode($booking->booking_ref) . '&amount=' . $amount_paid ) );
+        exit;
+    }
+
+    /* ── AJAX: Verify (inline flow fallback / portal) ─────────── */
 
     public static function ajax_verify() {
         if (!check_ajax_referer('ghm_public_nonce','nonce',false)) {
@@ -122,7 +282,6 @@ class GHM_Flutterwave {
 
         if (!$tx_ref) { wp_send_json_error(array('message'=>'Missing parameters.')); exit; }
 
-        // Retrieve stored booking data
         $booking_data = get_transient('ghm_flw_pending_'.$tx_ref);
         if ( !$booking_data ) {
             wp_send_json_error(array('message'=>'Payment session expired. Please try again.')); exit;
@@ -135,7 +294,7 @@ class GHM_Flutterwave {
             wp_send_json_error(array('message'=>'Payment was not successful.')); exit;
         }
 
-        // Payment verified — now create the booking
+        // Payment verified — create booking
         $customer = GHM_Customers::get_customer_by_email($booking_data['email'] ?? '');
         if (!$customer) {
             $customer_id = GHM_Customers::save_customer(array(
@@ -182,8 +341,7 @@ class GHM_Flutterwave {
     }
 
     /**
-     * Verify a Flutterwave payment made for the balance on an EXISTING booking
-     * (called from the guest portal). Records the payment and updates booking status.
+     * Verify balance payment from guest portal.
      */
     public static function ajax_verify_balance() {
         if ( ! check_ajax_referer( 'ghm_public_nonce', 'nonce', false ) ) {
@@ -227,6 +385,8 @@ class GHM_Flutterwave {
         ) );
         exit;
     }
+
+    /* ── Webhook ──────────────────────────────────────────────── */
 
     public static function handle_webhook() {
         $secret   = self::secret_key();
@@ -280,6 +440,8 @@ class GHM_Flutterwave {
         http_response_code(200); exit('OK');
     }
 
+    /* ── Server-side Verification ─────────────────────────────── */
+
     private static function verify_on_flutterwave($id) {
         $secret = self::secret_key();
         if (!$secret) return new WP_Error('no_key','Flutterwave secret key not configured.');
@@ -294,8 +456,14 @@ class GHM_Flutterwave {
         return $body['data'];
     }
 
+    /* ── Helpers ──────────────────────────────────────────────── */
+
     public static function webhook_url() {
         return add_query_arg('action','ghm_flw_webhook',admin_url('admin-ajax.php'));
+    }
+
+    public static function callback_url() {
+        return add_query_arg('action','ghm_flw_callback',admin_url('admin-ajax.php'));
     }
 }
 

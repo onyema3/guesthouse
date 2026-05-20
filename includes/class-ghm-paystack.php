@@ -1,6 +1,7 @@
 <?php
 /**
  * Paystack Payment Gateway for GuestHouse Manager
+ * Uses the REDIRECT flow (not inline popup) to avoid CSP issues.
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
@@ -9,19 +10,23 @@ class GHM_Paystack {
     const API_BASE = 'https://api.paystack.co';
 
     public static function init() {
-        // AJAX: initialise transaction
+        // AJAX: initialise transaction (redirect flow)
         add_action( 'wp_ajax_ghm_paystack_init',        array( __CLASS__, 'ajax_init_transaction' ) );
         add_action( 'wp_ajax_nopriv_ghm_paystack_init', array( __CLASS__, 'ajax_init_transaction' ) );
 
-        // AJAX: verify transaction after payment
+        // AJAX: verify transaction (used by portal balance payments)
         add_action( 'wp_ajax_ghm_paystack_verify',        array( __CLASS__, 'ajax_verify_transaction' ) );
         add_action( 'wp_ajax_nopriv_ghm_paystack_verify', array( __CLASS__, 'ajax_verify_transaction' ) );
+
+        // Callback endpoint: Paystack redirects back here after payment
+        add_action( 'wp_ajax_ghm_paystack_callback',        array( __CLASS__, 'handle_callback' ) );
+        add_action( 'wp_ajax_nopriv_ghm_paystack_callback', array( __CLASS__, 'handle_callback' ) );
 
         // Webhook endpoint
         add_action( 'wp_ajax_nopriv_ghm_paystack_webhook', array( __CLASS__, 'handle_webhook' ) );
         add_action( 'wp_ajax_ghm_paystack_webhook',        array( __CLASS__, 'handle_webhook' ) );
 
-        // Enqueue Paystack JS on pages that have the booking shortcode
+        // Enqueue — no longer loads inline.js (not needed for redirect flow)
         add_action( 'wp_enqueue_scripts', array( __CLASS__, 'maybe_enqueue' ) );
     }
 
@@ -49,22 +54,21 @@ class GHM_Paystack {
 
     public static function maybe_enqueue() {
         if ( ! self::is_enabled() ) return;
-        wp_enqueue_script( 'paystack-inline', 'https://js.paystack.co/v1/inline.js', array(), null, true );
-        // Pass keys and config to the public JS
+        // No external script needed for redirect flow!
+        // Just pass config to the public JS so it knows Paystack is enabled
         wp_localize_script( 'ghm-public', 'ghmPaystack', array(
             'enabled'    => true,
             'public_key' => self::public_key(),
             'currency'   => strtoupper( get_option( 'ghm_currency', 'NGN' ) ),
-            'ajax_url'   => admin_url( 'admin-ajax.php' ),
-            'nonce'      => wp_create_nonce( 'ghm_public_nonce' ),
+            'mode'       => 'redirect',
         ) );
     }
 
-    /* ── AJAX: Initialise ─────────────────────────────────────── */
+    /* ── AJAX: Initialise (Redirect Flow) ─────────────────────── */
 
     /**
-     * Validates booking data and returns Paystack payment parameters.
-     * Does NOT create a booking — that happens only after payment is verified.
+     * Validates booking data, calls Paystack Initialize Transaction API,
+     * and returns the authorization_url for the frontend to redirect to.
      */
     public static function ajax_init_transaction() {
         if ( ! check_ajax_referer( 'ghm_public_nonce', 'nonce', false ) ) {
@@ -123,35 +127,161 @@ class GHM_Paystack {
         $ps_amount = intval( round( $amount * 100 ) ); // kobo/pesewas/cents
         $reference = 'GHM-PS-' . strtoupper( wp_generate_password( 8, false ) ) . '-' . time();
 
-        // Store booking data in transient so we can create the booking after payment verification
+        // Store booking data in transient
         $booking_data = $data;
         $booking_data['calculated_amount'] = $amount;
         $booking_data['discount_amount']   = $discount_amount;
         $booking_data['discount_id']       = $discount_id;
         set_transient( 'ghm_ps_pending_' . $reference, $booking_data, 3 * HOUR_IN_SECONDS );
 
-        $room = GHM_Rooms::get_room( absint( $data['room_id'] ?? 0 ) );
+        // Build callback URL (Paystack redirects here after payment)
+        $callback_url = add_query_arg( 'action', 'ghm_paystack_callback', admin_url( 'admin-ajax.php' ) );
 
-        wp_send_json_success( array(
-            'reference'   => $reference,
-            'booking_ref' => '', // No booking yet — created after payment
-            'booking_id'  => 0,
-            'amount'      => $ps_amount,
-            'currency'    => $currency,
-            'email'       => $data['email'] ?? '',
-            'name'        => trim( ( $data['first_name'] ?? '' ) . ' ' . ( $data['last_name'] ?? '' ) ),
-            'hotel_name'  => get_option( 'ghm_hotel_name', get_bloginfo('name') ),
-            'meta'        => array(
-                'booking_ref' => '',
-                'room'        => $room ? $room->name : '',
-                'check_in'    => $data['check_in'] ?? '',
-                'check_out'   => $data['check_out'] ?? '',
+        // Call Paystack Initialize Transaction API
+        $room = GHM_Rooms::get_room( absint( $data['room_id'] ?? 0 ) );
+        $hotel_name = get_option( 'ghm_hotel_name', get_bloginfo('name') );
+
+        $payload = array(
+            'email'        => $data['email'] ?? '',
+            'amount'       => $ps_amount,
+            'currency'     => $currency,
+            'reference'    => $reference,
+            'callback_url' => $callback_url,
+            'metadata'     => array(
+                'custom_fields' => array(
+                    array( 'display_name' => 'Hotel',     'variable_name' => 'hotel',     'value' => $hotel_name ),
+                    array( 'display_name' => 'Room',      'variable_name' => 'room',      'value' => $room ? $room->name : '' ),
+                    array( 'display_name' => 'Check-In',  'variable_name' => 'check_in',  'value' => $data['check_in'] ?? '' ),
+                    array( 'display_name' => 'Check-Out', 'variable_name' => 'check_out', 'value' => $data['check_out'] ?? '' ),
+                ),
             ),
+        );
+
+        $response = wp_remote_post( self::API_BASE . '/transaction/initialize', array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . self::secret_key(),
+                'Content-Type'  => 'application/json',
+            ),
+            'body'    => wp_json_encode( $payload ),
+            'timeout' => 30,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error( array( 'message' => 'Could not connect to Paystack. Please try again.' ) );
+            exit;
+        }
+
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        if ( ! $body || empty( $body['status'] ) || ! $body['status'] ) {
+            $msg = $body['message'] ?? 'Paystack initialization failed.';
+            wp_send_json_error( array( 'message' => $msg ) );
+            exit;
+        }
+
+        // Return the authorization URL for the frontend to redirect to
+        wp_send_json_success( array(
+            'authorization_url' => $body['data']['authorization_url'],
+            'reference'         => $body['data']['reference'] ?? $reference,
+            'mode'              => 'redirect',
         ) );
         exit;
     }
 
-    /* ── AJAX: Verify ─────────────────────────────────────────── */
+    /* ── Callback: Paystack redirects back here ───────────────── */
+
+    /**
+     * After the guest pays on Paystack's hosted page, they are redirected
+     * back to this URL with ?reference=XXX. We verify the payment, create
+     * the booking, and redirect to a confirmation page.
+     */
+    public static function handle_callback() {
+        $reference = sanitize_text_field( $_GET['reference'] ?? $_GET['trxref'] ?? '' );
+
+        if ( ! $reference ) {
+            wp_die( 'Missing payment reference. Please contact support.', 'Payment Error', array( 'response' => 400 ) );
+        }
+
+        // Retrieve stored booking data
+        $booking_data = get_transient( 'ghm_ps_pending_' . $reference );
+        if ( ! $booking_data ) {
+            // Already processed (maybe by webhook) — redirect to homepage
+            wp_redirect( home_url( '/?ghm_payment=already_processed&ref=' . urlencode($reference) ) );
+            exit;
+        }
+
+        // Verify on Paystack
+        $result = self::verify_on_paystack( $reference );
+
+        if ( is_wp_error( $result ) ) {
+            wp_die( 'Payment verification failed: ' . esc_html( $result->get_error_message() ), 'Payment Error', array( 'response' => 500 ) );
+        }
+
+        if ( ( $result['status'] ?? '' ) !== 'success' ) {
+            // Payment failed or was abandoned
+            delete_transient( 'ghm_ps_pending_' . $reference );
+            wp_redirect( home_url( '/?ghm_payment=failed&ref=' . urlencode($reference) ) );
+            exit;
+        }
+
+        // Payment verified — create the booking
+        $customer = GHM_Customers::get_customer_by_email( $booking_data['email'] ?? '' );
+        if ( ! $customer ) {
+            $customer_id = GHM_Customers::save_customer( array(
+                'first_name' => $booking_data['first_name'] ?? '',
+                'last_name'  => $booking_data['last_name']  ?? '',
+                'email'      => $booking_data['email']       ?? '',
+                'phone'      => $booking_data['phone']       ?? '',
+                'country'    => $booking_data['country']     ?? '',
+            ) );
+            if ( is_wp_error( $customer_id ) ) {
+                wp_die( 'Payment received but booking creation failed. Contact support with reference: ' . esc_html($reference), 'Booking Error' );
+            }
+        } else {
+            $customer_id = $customer->id;
+        }
+
+        $amount          = (float)( $booking_data['calculated_amount'] ?? 0 );
+        $discount_amount = (float)( $booking_data['discount_amount']   ?? 0 );
+        $discount_id     = absint( $booking_data['discount_id']        ?? 0 );
+
+        if ( $discount_id && $discount_amount > 0 && class_exists('GHM_Discounts') ) {
+            GHM_Discounts::apply( $discount_id );
+        }
+
+        $booking_id = GHM_Bookings::create_booking( array_merge( $booking_data, array(
+            'customer_id'     => $customer_id,
+            'total_amount'    => $amount,
+            'discount_amount' => $discount_amount,
+            'status'          => 'confirmed',
+            'payment_status'  => 'paid',
+        ) ) );
+
+        if ( is_wp_error( $booking_id ) ) {
+            wp_die( 'Payment received but booking creation failed. Contact support with reference: ' . esc_html($reference), 'Booking Error' );
+        }
+
+        $amount_paid = ( $result['amount'] ?? 0 ) / 100;
+
+        GHM_Payments::record_payment( array(
+            'booking_id'     => $booking_id,
+            'amount'         => $amount_paid,
+            'currency'       => $result['currency'] ?? get_option( 'ghm_currency', 'NGN' ),
+            'method'         => 'online',
+            'transaction_id' => $reference,
+            'notes'          => 'Paystack redirect payment. Channel: ' . ( $result['channel'] ?? 'unknown' ),
+        ) );
+
+        delete_transient( 'ghm_ps_pending_' . $reference );
+
+        $booking = GHM_Bookings::get_booking( $booking_id );
+
+        // Redirect to confirmation page with booking ref
+        wp_redirect( home_url( '/?ghm_payment=success&gateway=paystack&ref=' . urlencode($booking->booking_ref) . '&amount=' . $amount_paid ) );
+        exit;
+    }
+
+    /* ── AJAX: Verify (for portal balance payments) ───────────── */
 
     public static function ajax_verify_transaction() {
         if ( ! check_ajax_referer( 'ghm_public_nonce', 'nonce', false ) ) {
@@ -185,7 +315,7 @@ class GHM_Paystack {
             exit;
         }
 
-        // Payment verified — now create the booking
+        // Payment verified — create booking
         $customer = GHM_Customers::get_customer_by_email( $booking_data['email'] ?? '' );
         if ( ! $customer ) {
             $customer_id = GHM_Customers::save_customer( array(
@@ -207,7 +337,6 @@ class GHM_Paystack {
         $discount_amount = (float)( $booking_data['discount_amount']   ?? 0 );
         $discount_id     = absint( $booking_data['discount_id']        ?? 0 );
 
-        // Apply discount usage count now that payment is confirmed
         if ( $discount_id && $discount_amount > 0 && class_exists('GHM_Discounts') ) {
             GHM_Discounts::apply( $discount_id );
         }
@@ -225,7 +354,6 @@ class GHM_Paystack {
             exit;
         }
 
-        // Record payment
         $amount_paid = $result['amount'] / 100;
 
         GHM_Payments::record_payment( array(
@@ -234,10 +362,9 @@ class GHM_Paystack {
             'currency'       => $result['currency'] ?? get_option( 'ghm_currency', 'NGN' ),
             'method'         => 'online',
             'transaction_id' => $reference,
-            'notes'          => 'Paystack online payment. Channel: ' . ( $result['channel'] ?? 'unknown' ),
+            'notes'          => 'Paystack payment. Channel: ' . ( $result['channel'] ?? 'unknown' ),
         ) );
 
-        // Clean up transient
         delete_transient( 'ghm_ps_pending_' . $reference );
 
         $booking = GHM_Bookings::get_booking( $booking_id );
@@ -253,7 +380,6 @@ class GHM_Paystack {
     /* ── Webhook ──────────────────────────────────────────────── */
 
     public static function handle_webhook() {
-        // Validate Paystack signature
         $secret    = self::secret_key();
         $body      = file_get_contents( 'php://input' );
         $signature = $_SERVER['HTTP_X_PAYSTACK_SIGNATURE'] ?? '';
@@ -273,7 +399,6 @@ class GHM_Paystack {
             $booking_data = get_transient( 'ghm_ps_pending_' . $reference );
 
             if ( $booking_data ) {
-                // Create booking from stored data (payment confirmed via webhook)
                 $customer = GHM_Customers::get_customer_by_email( $booking_data['email'] ?? '' );
                 if ( ! $customer ) {
                     $customer_id = GHM_Customers::save_customer( array(
@@ -351,13 +476,17 @@ class GHM_Paystack {
             return new WP_Error( 'paystack_error', $body['message'] ?? 'Paystack error.' );
         }
 
-        return $body['data']; // Contains status, amount, currency, channel, etc.
+        return $body['data'];
     }
 
-    /* ── Webhook URL helper ───────────────────────────────────── */
+    /* ── Helpers ──────────────────────────────────────────────── */
 
     public static function webhook_url() {
         return add_query_arg( 'action', 'ghm_paystack_webhook', admin_url( 'admin-ajax.php' ) );
+    }
+
+    public static function callback_url() {
+        return add_query_arg( 'action', 'ghm_paystack_callback', admin_url( 'admin-ajax.php' ) );
     }
 }
 
