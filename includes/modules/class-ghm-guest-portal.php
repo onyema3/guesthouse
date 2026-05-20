@@ -218,8 +218,12 @@ class GHM_Guest_Portal {
         }
 
         $booking = GHM_Bookings::get_booking( $booking_id );
-        if ( ! $booking || $booking->status !== 'checked_in' ) {
-            wp_send_json_error( array('message' => 'Service requests are only available during your stay.') );
+        if ( ! $booking ) {
+            wp_send_json_error( array('message' => 'Booking not found.') );
+            exit;
+        }
+        if ( in_array( $booking->status, array( 'cancelled', 'checked_out' ), true ) ) {
+            wp_send_json_error( array('message' => 'Service requests are not available for this booking.') );
             exit;
         }
 
