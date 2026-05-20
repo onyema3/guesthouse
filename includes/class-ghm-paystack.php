@@ -63,8 +63,8 @@ class GHM_Paystack {
     /* ── AJAX: Initialise ─────────────────────────────────────── */
 
     /**
-     * Creates a pending booking, then returns Paystack metadata so the
-     * frontend can call PaystackPop.newTransaction().
+     * Validates booking data and returns Paystack payment parameters.
+     * Does NOT create a booking — that happens only after payment is verified.
      */
     public static function ajax_init_transaction() {
         if ( ! check_ajax_referer( 'ghm_public_nonce', 'nonce', false ) ) {
@@ -79,25 +79,7 @@ class GHM_Paystack {
 
         $data = array_map( 'sanitize_text_field', $_POST );
 
-        // 1. Find or create customer
-        $customer = GHM_Customers::get_customer_by_email( $data['email'] ?? '' );
-        if ( ! $customer ) {
-            $customer_id = GHM_Customers::save_customer( array(
-                'first_name' => $data['first_name'] ?? '',
-                'last_name'  => $data['last_name']  ?? '',
-                'email'      => $data['email']       ?? '',
-                'phone'      => $data['phone']       ?? '',
-                'country'    => $data['country']     ?? '',
-            ) );
-            if ( is_wp_error( $customer_id ) ) {
-                wp_send_json_error( array( 'message' => $customer_id->get_error_message() ) );
-                exit;
-            }
-        } else {
-            $customer_id = $customer->id;
-        }
-
-        // 2. Calculate amount
+        // 1. Calculate amount
         $amount = GHM_Bookings::calculate_amount(
             absint( $data['room_id'] ?? 0 ),
             $data['check_in']    ?? '',
@@ -110,14 +92,13 @@ class GHM_Paystack {
             exit;
         }
 
-        // 2b. Apply discount if provided
+        // 2. Apply discount if provided
         $discount_amount = 0;
         $discount_id     = absint( $data['discount_id'] ?? 0 );
         if ( $discount_id && class_exists('GHM_Discounts') ) {
             $discount_amount = (float)( $data['discount_amount'] ?? 0 );
             if ( $discount_amount > 0 && $discount_amount <= $amount ) {
                 $amount = round( $amount - $discount_amount, 2 );
-                GHM_Discounts::apply( $discount_id );
             }
         }
 
@@ -127,45 +108,44 @@ class GHM_Paystack {
             $amount = $client_total;
         }
 
-        // 3. Create a PENDING booking
-        $booking_id = GHM_Bookings::create_booking( array_merge( $data, array(
-            'customer_id'     => $customer_id,
-            'total_amount'    => $amount,
-            'discount_amount' => $discount_amount,
-            'status'          => 'pending',
-            'payment_status'  => 'unpaid',
-        ) ) );
-
-        if ( is_wp_error( $booking_id ) ) {
-            wp_send_json_error( array( 'message' => $booking_id->get_error_message() ) );
+        // 3. Check room availability
+        $room_available = GHM_Rooms::is_room_available(
+            absint( $data['room_id'] ?? 0 ),
+            $data['check_in']  ?? '',
+            $data['check_out'] ?? ''
+        );
+        if ( ! $room_available ) {
+            wp_send_json_error( array( 'message' => 'This room is no longer available for the selected dates.' ) );
             exit;
         }
 
-        $booking  = GHM_Bookings::get_booking( $booking_id );
-        $currency = strtoupper( get_option( 'ghm_currency', 'NGN' ) );
+        $currency  = strtoupper( get_option( 'ghm_currency', 'NGN' ) );
+        $ps_amount = intval( round( $amount * 100 ) ); // kobo/pesewas/cents
+        $reference = 'GHM-PS-' . strtoupper( wp_generate_password( 8, false ) ) . '-' . time();
 
-        // Paystack amount is in kobo/pesewas/cents (smallest unit × 100)
-        $ps_amount = intval( round( $amount * 100 ) );
+        // Store booking data in transient so we can create the booking after payment verification
+        $booking_data = $data;
+        $booking_data['calculated_amount'] = $amount;
+        $booking_data['discount_amount']   = $discount_amount;
+        $booking_data['discount_id']       = $discount_id;
+        set_transient( 'ghm_ps_pending_' . $reference, $booking_data, 3 * HOUR_IN_SECONDS );
 
-        // Store booking_id in Paystack metadata so webhook can retrieve it
-        $reference = 'GHM-' . $booking->booking_ref . '-' . time();
-        update_post_meta( 0, '_ghm_ps_ref_' . $reference, $booking_id ); // won't work — use transient
-        set_transient( 'ghm_ps_ref_' . $reference, $booking_id, 3 * HOUR_IN_SECONDS );
+        $room = GHM_Rooms::get_room( absint( $data['room_id'] ?? 0 ) );
 
         wp_send_json_success( array(
             'reference'   => $reference,
-            'booking_ref' => $booking->booking_ref,
-            'booking_id'  => $booking_id,
+            'booking_ref' => '', // No booking yet — created after payment
+            'booking_id'  => 0,
             'amount'      => $ps_amount,
             'currency'    => $currency,
-            'email'       => $data['email'],
+            'email'       => $data['email'] ?? '',
             'name'        => trim( ( $data['first_name'] ?? '' ) . ' ' . ( $data['last_name'] ?? '' ) ),
             'hotel_name'  => get_option( 'ghm_hotel_name', get_bloginfo('name') ),
             'meta'        => array(
-                'booking_ref' => $booking->booking_ref,
-                'room'        => $booking->room_name,
-                'check_in'    => $data['check_in'],
-                'check_out'   => $data['check_out'],
+                'booking_ref' => '',
+                'room'        => $room ? $room->name : '',
+                'check_in'    => $data['check_in'] ?? '',
+                'check_out'   => $data['check_out'] ?? '',
             ),
         ) );
         exit;
@@ -179,11 +159,17 @@ class GHM_Paystack {
             exit;
         }
 
-        $reference  = sanitize_text_field( $_POST['reference'] ?? '' );
-        $booking_id = absint( $_POST['booking_id'] ?? 0 );
+        $reference = sanitize_text_field( $_POST['reference'] ?? '' );
 
-        if ( ! $reference || ! $booking_id ) {
-            wp_send_json_error( array( 'message' => 'Missing reference or booking ID.' ) );
+        if ( ! $reference ) {
+            wp_send_json_error( array( 'message' => 'Missing payment reference.' ) );
+            exit;
+        }
+
+        // Retrieve stored booking data
+        $booking_data = get_transient( 'ghm_ps_pending_' . $reference );
+        if ( ! $booking_data ) {
+            wp_send_json_error( array( 'message' => 'Payment session expired. Please try again.' ) );
             exit;
         }
 
@@ -195,14 +181,52 @@ class GHM_Paystack {
         }
 
         if ( $result['status'] !== 'success' ) {
-            // Mark booking as cancelled
-            GHM_Bookings::update_booking( $booking_id, array( 'status' => 'cancelled', 'payment_status' => 'failed' ) );
             wp_send_json_error( array( 'message' => 'Payment was not successful. Please try again.' ) );
             exit;
         }
 
-        // record_payment will auto-confirm the booking via maybe_confirm_on_payment()
-        $amount_paid = $result['amount'] / 100; // convert from kobo back to naira/dollars
+        // Payment verified — now create the booking
+        $customer = GHM_Customers::get_customer_by_email( $booking_data['email'] ?? '' );
+        if ( ! $customer ) {
+            $customer_id = GHM_Customers::save_customer( array(
+                'first_name' => $booking_data['first_name'] ?? '',
+                'last_name'  => $booking_data['last_name']  ?? '',
+                'email'      => $booking_data['email']       ?? '',
+                'phone'      => $booking_data['phone']       ?? '',
+                'country'    => $booking_data['country']     ?? '',
+            ) );
+            if ( is_wp_error( $customer_id ) ) {
+                wp_send_json_error( array( 'message' => 'Payment received but booking creation failed. Contact support with reference: ' . $reference ) );
+                exit;
+            }
+        } else {
+            $customer_id = $customer->id;
+        }
+
+        $amount          = (float)( $booking_data['calculated_amount'] ?? 0 );
+        $discount_amount = (float)( $booking_data['discount_amount']   ?? 0 );
+        $discount_id     = absint( $booking_data['discount_id']        ?? 0 );
+
+        // Apply discount usage count now that payment is confirmed
+        if ( $discount_id && $discount_amount > 0 && class_exists('GHM_Discounts') ) {
+            GHM_Discounts::apply( $discount_id );
+        }
+
+        $booking_id = GHM_Bookings::create_booking( array_merge( $booking_data, array(
+            'customer_id'     => $customer_id,
+            'total_amount'    => $amount,
+            'discount_amount' => $discount_amount,
+            'status'          => 'confirmed',
+            'payment_status'  => 'paid',
+        ) ) );
+
+        if ( is_wp_error( $booking_id ) ) {
+            wp_send_json_error( array( 'message' => 'Payment received but booking creation failed. Contact support with reference: ' . $reference ) );
+            exit;
+        }
+
+        // Record payment
+        $amount_paid = $result['amount'] / 100;
 
         GHM_Payments::record_payment( array(
             'booking_id'     => $booking_id,
@@ -212,6 +236,9 @@ class GHM_Paystack {
             'transaction_id' => $reference,
             'notes'          => 'Paystack online payment. Channel: ' . ( $result['channel'] ?? 'unknown' ),
         ) );
+
+        // Clean up transient
+        delete_transient( 'ghm_ps_pending_' . $reference );
 
         $booking = GHM_Bookings::get_booking( $booking_id );
 
@@ -242,24 +269,54 @@ class GHM_Paystack {
         $event_type = $event['event'] ?? '';
 
         if ( $event_type === 'charge.success' ) {
-            $reference  = $event['data']['reference'] ?? '';
-            $booking_id = (int) get_transient( 'ghm_ps_ref_' . $reference );
+            $reference    = $event['data']['reference'] ?? '';
+            $booking_data = get_transient( 'ghm_ps_pending_' . $reference );
 
-            if ( $booking_id > 0 ) {
-                $booking = GHM_Bookings::get_booking( $booking_id );
-                if ( $booking && $booking->payment_status !== 'paid' ) {
-                    // record_payment auto-confirms when fully paid
-                    $amount_paid = ( $event['data']['amount'] ?? 0 ) / 100;
-                    GHM_Payments::record_payment( array(
-                        'booking_id'     => $booking_id,
-                        'amount'         => $amount_paid,
-                        'currency'       => $event['data']['currency'] ?? get_option( 'ghm_currency', 'NGN' ),
-                        'method'         => 'online',
-                        'transaction_id' => $reference,
-                        'notes'          => 'Paystack webhook: charge.success',
+            if ( $booking_data ) {
+                // Create booking from stored data (payment confirmed via webhook)
+                $customer = GHM_Customers::get_customer_by_email( $booking_data['email'] ?? '' );
+                if ( ! $customer ) {
+                    $customer_id = GHM_Customers::save_customer( array(
+                        'first_name' => $booking_data['first_name'] ?? '',
+                        'last_name'  => $booking_data['last_name']  ?? '',
+                        'email'      => $booking_data['email']       ?? '',
+                        'phone'      => $booking_data['phone']       ?? '',
                     ) );
-                    delete_transient( 'ghm_ps_ref_' . $reference );
+                } else {
+                    $customer_id = $customer->id;
                 }
+
+                if ( ! is_wp_error( $customer_id ) ) {
+                    $amount          = (float)( $booking_data['calculated_amount'] ?? 0 );
+                    $discount_amount = (float)( $booking_data['discount_amount']   ?? 0 );
+                    $discount_id     = absint( $booking_data['discount_id']        ?? 0 );
+
+                    if ( $discount_id && $discount_amount > 0 && class_exists('GHM_Discounts') ) {
+                        GHM_Discounts::apply( $discount_id );
+                    }
+
+                    $booking_id = GHM_Bookings::create_booking( array_merge( $booking_data, array(
+                        'customer_id'     => $customer_id,
+                        'total_amount'    => $amount,
+                        'discount_amount' => $discount_amount,
+                        'status'          => 'confirmed',
+                        'payment_status'  => 'paid',
+                    ) ) );
+
+                    if ( ! is_wp_error( $booking_id ) ) {
+                        $amount_paid = ( $event['data']['amount'] ?? 0 ) / 100;
+                        GHM_Payments::record_payment( array(
+                            'booking_id'     => $booking_id,
+                            'amount'         => $amount_paid,
+                            'currency'       => $event['data']['currency'] ?? get_option( 'ghm_currency', 'NGN' ),
+                            'method'         => 'online',
+                            'transaction_id' => $reference,
+                            'notes'          => 'Paystack webhook: charge.success',
+                        ) );
+                    }
+                }
+
+                delete_transient( 'ghm_ps_pending_' . $reference );
             }
         }
 
