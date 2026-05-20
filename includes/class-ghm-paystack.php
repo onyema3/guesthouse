@@ -22,6 +22,10 @@ class GHM_Paystack {
         add_action( 'wp_ajax_ghm_paystack_callback',        array( __CLASS__, 'handle_callback' ) );
         add_action( 'wp_ajax_nopriv_ghm_paystack_callback', array( __CLASS__, 'handle_callback' ) );
 
+        // AJAX: initialise balance payment from guest portal (redirect flow)
+        add_action( 'wp_ajax_ghm_paystack_init_balance',        array( __CLASS__, 'ajax_init_balance' ) );
+        add_action( 'wp_ajax_nopriv_ghm_paystack_init_balance', array( __CLASS__, 'ajax_init_balance' ) );
+
         // Webhook endpoint
         add_action( 'wp_ajax_nopriv_ghm_paystack_webhook', array( __CLASS__, 'handle_webhook' ) );
         add_action( 'wp_ajax_ghm_paystack_webhook',        array( __CLASS__, 'handle_webhook' ) );
@@ -197,10 +201,46 @@ class GHM_Paystack {
      */
     public static function handle_callback() {
         $reference = sanitize_text_field( $_GET['reference'] ?? $_GET['trxref'] ?? '' );
+        $is_balance = isset( $_GET['balance'] ) && $_GET['balance'] === '1';
 
         if ( ! $reference ) {
             wp_die( 'Missing payment reference. Please contact support.', 'Payment Error', array( 'response' => 400 ) );
         }
+
+        // ── Balance payment callback ──
+        if ( $is_balance ) {
+            $balance_data = get_transient( 'ghm_ps_balance_' . $reference );
+            if ( ! $balance_data ) {
+                wp_redirect( home_url( '/?ghm_payment=already_processed&ref=' . urlencode($reference) ) );
+                exit;
+            }
+
+            $result = self::verify_on_paystack( $reference );
+            if ( is_wp_error( $result ) || ( $result['status'] ?? '' ) !== 'success' ) {
+                wp_redirect( home_url( '/?ghm_payment=failed&gateway=paystack&ref=' . urlencode($reference) ) );
+                exit;
+            }
+
+            $booking_id  = (int) $balance_data['booking_id'];
+            $amount_paid = ( $result['amount'] ?? 0 ) / 100;
+
+            GHM_Payments::record_payment( array(
+                'booking_id'     => $booking_id,
+                'amount'         => $amount_paid,
+                'currency'       => $result['currency'] ?? get_option( 'ghm_currency', 'NGN' ),
+                'method'         => 'online',
+                'transaction_id' => $reference,
+                'notes'          => 'Paystack portal balance payment. Channel: ' . ( $result['channel'] ?? 'unknown' ),
+            ) );
+
+            delete_transient( 'ghm_ps_balance_' . $reference );
+
+            $booking = GHM_Bookings::get_booking( $booking_id );
+            wp_redirect( home_url( '/?ghm_payment=success&gateway=paystack&ref=' . urlencode($booking->booking_ref) . '&amount=' . $amount_paid ) );
+            exit;
+        }
+
+        // ── New booking payment callback ──
 
         // Retrieve stored booking data
         $booking_data = get_transient( 'ghm_ps_pending_' . $reference );
@@ -282,6 +322,94 @@ class GHM_Paystack {
     }
 
     /* ── AJAX: Verify (for portal balance payments) ───────────── */
+
+    /**
+     * Initialise a Paystack transaction for a balance payment on an existing booking.
+     * Returns authorization_url for the portal to redirect to.
+     */
+    public static function ajax_init_balance() {
+        if ( ! check_ajax_referer( 'ghm_public_nonce', 'nonce', false ) ) {
+            wp_send_json_error( array( 'message' => 'Security check failed.' ) );
+            exit;
+        }
+        if ( ! self::is_enabled() ) {
+            wp_send_json_error( array( 'message' => 'Paystack is not configured.' ) );
+            exit;
+        }
+
+        $booking_id = absint( $_POST['booking_id'] ?? 0 );
+        $amount     = floatval( $_POST['amount'] ?? 0 );
+        $email      = sanitize_email( $_POST['email'] ?? '' );
+        $name       = sanitize_text_field( $_POST['name'] ?? '' );
+        $ref        = sanitize_text_field( $_POST['ref'] ?? '' );
+
+        if ( ! $booking_id || $amount <= 0 || ! $email ) {
+            wp_send_json_error( array( 'message' => 'Missing required parameters.' ) );
+            exit;
+        }
+
+        $booking = GHM_Bookings::get_booking( $booking_id );
+        if ( ! $booking ) {
+            wp_send_json_error( array( 'message' => 'Booking not found.' ) );
+            exit;
+        }
+
+        $currency  = strtoupper( get_option( 'ghm_currency', 'NGN' ) );
+        $ps_amount = intval( round( $amount * 100 ) );
+        $reference = 'PORTAL-PS-' . strtoupper( wp_generate_password( 6, false ) ) . '-' . time();
+
+        // Store booking_id in transient for callback verification
+        set_transient( 'ghm_ps_balance_' . $reference, array(
+            'booking_id' => $booking_id,
+            'amount'     => $amount,
+        ), 3 * HOUR_IN_SECONDS );
+
+        // Build callback URL
+        $callback_url = add_query_arg( array(
+            'action' => 'ghm_paystack_callback',
+            'balance' => '1',
+        ), admin_url( 'admin-ajax.php' ) );
+
+        $payload = array(
+            'email'        => $email,
+            'amount'       => $ps_amount,
+            'currency'     => $currency,
+            'reference'    => $reference,
+            'callback_url' => $callback_url,
+            'metadata'     => array(
+                'custom_fields' => array(
+                    array( 'display_name' => 'Booking Ref', 'variable_name' => 'booking_ref', 'value' => $ref ),
+                    array( 'display_name' => 'Type',        'variable_name' => 'type',        'value' => 'balance_payment' ),
+                ),
+            ),
+        );
+
+        $response = wp_remote_post( self::API_BASE . '/transaction/initialize', array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . self::secret_key(),
+                'Content-Type'  => 'application/json',
+            ),
+            'body'    => wp_json_encode( $payload ),
+            'timeout' => 30,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error( array( 'message' => 'Could not connect to Paystack.' ) );
+            exit;
+        }
+
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+        if ( ! $body || empty( $body['status'] ) || ! $body['status'] ) {
+            wp_send_json_error( array( 'message' => $body['message'] ?? 'Paystack initialization failed.' ) );
+            exit;
+        }
+
+        wp_send_json_success( array(
+            'authorization_url' => $body['data']['authorization_url'],
+            'reference'         => $body['data']['reference'] ?? $reference,
+        ) );
+        exit;
+    }
 
     public static function ajax_verify_transaction() {
         if ( ! check_ajax_referer( 'ghm_public_nonce', 'nonce', false ) ) {
