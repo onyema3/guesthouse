@@ -42,7 +42,9 @@
 
       // Payment option toggle — update button label
       $(document).on('change', 'input[name="payment_option"]', function(){
-        const amt = $('#ghm-pb-amount-value').text() || '—';
+        const sym = $('#ghm-currency-symbol').val() || '';
+        const finalAmount = parseFloat($('#ghm-pb-total-amount').val()) || 0;
+        const amt = sym + finalAmount.toFixed(2);
         GHMPublic.updateConfirmBtn($(this).val(), amt);
         $('.ghm-pay-option').removeClass('ghm-pay-option--selected');
         $(this).closest('.ghm-pay-option').addClass('ghm-pay-option--selected');
@@ -248,7 +250,23 @@
       const fn     = $('#ghm-pb-first-name').val() || '';
       const ln     = $('#ghm-pb-last-name').val()  || '';
       const email  = $('#ghm-pb-email').val()       || '';
-      const amount = $('#ghm-pb-amount-value').text() || '—';
+
+      // Use the hidden total_amount field as the source of truth for the final amount
+      const finalAmount = parseFloat($('#ghm-pb-total-amount').val()) || 0;
+      const discountAmt = parseFloat($('#ghm-discount-amount-field').val()) || 0;
+      const originalAmt = finalAmount + discountAmt;
+
+      // Build display: show original struck-through + final if discount applied, otherwise just final
+      let amountDisplay;
+      let amountForBtn;
+      if (discountAmt > 0) {
+        amountDisplay = `<span style="text-decoration:line-through;opacity:.5;font-size:13px;">${this._esc(sym)}${originalAmt.toFixed(2)}</span> ` +
+                        `<strong style="color:#3ecf8e;font-size:16px;">${this._esc(sym)}${finalAmount.toFixed(2)}</strong>`;
+        amountForBtn = sym + finalAmount.toFixed(2);
+      } else {
+        amountDisplay = `<strong style="color:#c9a84c;font-size:16px;">${this._esc(sym)}${finalAmount.toFixed(2)}</strong>`;
+        amountForBtn = sym + finalAmount.toFixed(2);
+      }
 
       const row = (label, val) =>
         `<tr><td style="padding:7px 0;color:#9ca3af;width:130px;font-size:13px;">${label}</td>` +
@@ -261,7 +279,7 @@
         row('Email',        this._esc(email)) +
         row('Check-In',     this._esc(ci)) +
         row('Check-Out',    this._esc(co)) +
-        row('Total',        `<strong style="color:#c9a84c;font-size:16px;">${this._esc(amount)}</strong>`) +
+        row('Total',        amountDisplay) +
         `</table>`
       );
 
@@ -269,7 +287,7 @@
       const psEnabled = $('#ghm-paystack-enabled').val() === '1';
       const payOpt    = $('input[name="payment_option"]:checked').val()
                         || (psEnabled ? 'paystack' : 'arrival');
-      this.updateConfirmBtn(payOpt, amount);
+      this.updateConfirmBtn(payOpt, amountForBtn);
     },
 
     /* ─── Confirm Handler ──────────────────────────────────────── */
