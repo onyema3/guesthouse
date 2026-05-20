@@ -49,7 +49,7 @@ class GHM_Paystack {
 
     public static function maybe_enqueue() {
         if ( ! self::is_enabled() ) return;
-        wp_enqueue_script( 'paystack-inline', 'https://js.paystack.co/v2/inline.js', array(), null, true );
+        wp_enqueue_script( 'paystack-inline', 'https://js.paystack.co/v1/inline.js', array(), null, true );
         // Pass keys and config to the public JS
         wp_localize_script( 'ghm-public', 'ghmPaystack', array(
             'enabled'    => true,

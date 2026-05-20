@@ -209,8 +209,7 @@
 
         $btn.prop('disabled', true).text('Opening payment…');
 
-        const popup = (typeof PaystackPop === 'function') ? new PaystackPop() : PaystackPop;
-        popup.newTransaction({
+        const handler = PaystackPop.setup({
           key      : ghmPaystack.public_key,
           email    : email,
           amount   : Math.round(amount * 100),
@@ -220,7 +219,7 @@
           lastName : name[1] || '',
           metadata : { custom_fields:[{ display_name:'Booking', variable_name:'booking_ref', value: ref }] },
           onClose  : () => { $btn.prop('disabled', false).html('💳 Pay Balance with Paystack'); },
-          onSuccess: (response) => {
+          callback: (response) => {
             $btn.text('Verifying…');
             $.post(ghmPortal.ajax_url, {
               action    : 'ghm_paystack_verify',
@@ -243,6 +242,7 @@
             });
           }
         });
+        handler.openIframe();
       });
     },
 

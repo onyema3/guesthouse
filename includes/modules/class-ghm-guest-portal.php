@@ -121,7 +121,7 @@ class GHM_Guest_Portal {
 
         // Paystack for balance payment in portal
         if ( class_exists('GHM_Paystack') && GHM_Paystack::is_enabled() ) {
-            wp_enqueue_script('paystack-inline','https://js.paystack.co/v2/inline.js',array(),null,true);
+            wp_enqueue_script('paystack-inline','https://js.paystack.co/v1/inline.js',array(),null,true);
             wp_localize_script('ghm-portal','ghmPaystack',array(
                 'enabled'    => true,
                 'public_key' => GHM_Paystack::public_key(),
