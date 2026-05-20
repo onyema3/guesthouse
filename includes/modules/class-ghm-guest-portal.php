@@ -190,7 +190,13 @@ class GHM_Guest_Portal {
     /* ── AJAX: Logout ────────────────────────────────────────────── */
 
     public static function ajax_logout() {
+        if ( ! session_id() && ! headers_sent() ) {
+            session_start();
+        }
         self::clear_session();
+        if ( session_id() ) {
+            session_destroy();
+        }
         wp_send_json_success();
         exit;
     }
