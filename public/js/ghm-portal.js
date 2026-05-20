@@ -61,7 +61,13 @@
     bindLogout() {
       $(document).on('click', '#ghm-portal-logout-btn', () => {
         $.post(ghmPortal.ajax_url, { action:'ghm_portal_logout', nonce:ghmPortal.nonce })
-          .always(() => window.location.reload());
+          .always(() => {
+            // Use cache-busting redirect instead of reload() to bypass
+            // LiteSpeed/server page cache that may serve the old dashboard
+            const url = new URL(window.location.href);
+            url.searchParams.set('logged_out', Date.now());
+            window.location.href = url.toString();
+          });
       });
     },
 
