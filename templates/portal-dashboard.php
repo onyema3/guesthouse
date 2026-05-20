@@ -25,7 +25,8 @@ $sc = $status_colors[$booking->status] ?? '#6b7280';
 $sl = $status_labels[$booking->status] ?? ucfirst($booking->status);
 
 // Determine which sections are visible
-$can_service = $booking->status === 'checked_in';
+// Service requests available for any active (non-cancelled, non-checked-out) booking
+$can_service = ! in_array( $booking->status, array( 'cancelled', 'checked_out' ), true );
 $can_review  = $booking->status === 'checked_out' && !$review;
 $reviewed    = !empty($review);
 ?>
@@ -207,7 +208,13 @@ $reviewed    = !empty($review);
   <div class="ghm-portal-tab-content" id="ghm-tab-services">
     <div class="ghm-portal-card">
       <h3 class="ghm-portal-card-title">🔔 Request a Service</h3>
-      <p style="font-size:14px;color:#6b7280;margin-bottom:16px;">Our team will attend to your request as soon as possible.</p>
+      <p style="font-size:14px;color:#6b7280;margin-bottom:16px;">
+        <?php if ( $booking->status === 'checked_in' ): ?>
+          Our team will attend to your request as soon as possible.
+        <?php else: ?>
+          Send pre-arrival requests like airport pickup, early check-in, extra bed, or any special arrangement. Our team will follow up before your stay.
+        <?php endif; ?>
+      </p>
 
       <form id="ghm-service-form">
         <div class="ghm-portal-field">
