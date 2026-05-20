@@ -3,14 +3,14 @@
  * Plugin Name:  GuestHouse Manager
  * Plugin URI:   https://example.com/guesthouse-manager
  * Description:  Complete guest house PMS — rooms, workspaces, bookings, housekeeping, maintenance, CRM, Paystack, Flutterwave, WhatsApp, REST API, iCal, dynamic pricing, deposits, guest portal, forecasting, discount codes, waiting list, reviews, and more.
- * Version:      3.2.6
+ * Version:      3.2.7
  * Author:       GuestHouse Manager
  * License:      GPL-2.0+
  * Text Domain:  guesthouse-manager
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'GHM_VERSION',     '3.2.6' );
+define( 'GHM_VERSION',     '3.2.7' );
 define( 'GHM_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'GHM_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'GHM_PLUGIN_FILE', __FILE__ );

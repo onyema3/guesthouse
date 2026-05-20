@@ -347,8 +347,7 @@
         $btn.html('<span class="ghm-pub-spinner"></span> Opening Paystack…');
 
         try {
-        const popup = (typeof PaystackPop === 'function') ? new PaystackPop() : PaystackPop;
-        popup.newTransaction({
+        const handler = PaystackPop.setup({
           key      : ghmPaystack.public_key,
           email    : d.email,
           amount   : d.amount,
@@ -371,7 +370,7 @@
             this.updateConfirmBtn('paystack', sym + parseFloat(formData.total_amount||0).toFixed(2));
             this.showAlert('Payment cancelled. Your booking is held for 30 minutes — try again when ready.', 'info');
           },
-          onSuccess: (response) => {
+          callback: (response) => {
             $btn.html('<span class="ghm-pub-spinner"></span> Verifying Payment…').prop('disabled', true);
             $.post(ghmPublic.ajax_url, {
               action    : 'ghm_paystack_verify',
@@ -397,6 +396,7 @@
             });
           }
         });
+        handler.openIframe();
         } catch(e) {
           console.error('Paystack error:', e);
           this.showAlert('Could not open payment window. Please disable ad-blockers and try again, or choose Pay on Arrival.', 'error');
@@ -437,6 +437,7 @@
         const d = res.data;
         $btn.html('<span class="ghm-pub-spinner"></span> Opening Flutterwave…');
 
+        try {
         FlutterwaveCheckout({
           public_key    : ghmFlutterwave.public_key,
           tx_ref        : d.tx_ref,
@@ -469,6 +470,12 @@
             this.showAlert('Payment cancelled. Your booking is held — try again when ready.','info');
           }
         });
+        } catch(e) {
+          console.error('Flutterwave error:', e);
+          this.showAlert('Could not open Flutterwave payment window. Please disable ad-blockers and try again, or choose Pay on Arrival.', 'error');
+          $btn.prop('disabled', false);
+          this.updateConfirmBtn('flutterwave', sym+parseFloat(formData.total_amount||0).toFixed(2));
+        }
       })
       .fail(()=>{ this.showAlert('Network error. Please try again.','error'); $btn.prop('disabled',false); });
     },

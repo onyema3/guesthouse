@@ -19,7 +19,7 @@ class GHM_Shortcodes {
         // Paystack inline JS must load before our public script
         $deps = array( 'jquery' );
         if ( class_exists( 'GHM_Paystack' ) && GHM_Paystack::is_enabled() ) {
-            wp_enqueue_script( 'paystack-inline', 'https://js.paystack.co/v2/inline.js', array(), null, true );
+            wp_enqueue_script( 'paystack-inline', 'https://js.paystack.co/v1/inline.js', array(), null, true );
             $deps[] = 'paystack-inline';
         }
 
