@@ -153,6 +153,9 @@ class GHM_Guest_Portal {
     /* ── AJAX: Login ─────────────────────────────────────────────── */
 
     public static function ajax_login() {
+        if ( ! session_id() && ! headers_sent() ) {
+            session_start();
+        }
         check_ajax_referer( 'ghm_portal_nonce', 'nonce' );
 
         $ref   = strtoupper( sanitize_text_field( $_POST['booking_ref'] ?? '' ) );
@@ -194,9 +197,11 @@ class GHM_Guest_Portal {
             session_start();
         }
         self::clear_session();
-        if ( session_id() ) {
-            session_destroy();
-        }
+        // Wipe all session data but do NOT call session_destroy() —
+        // destroying invalidates the session cookie, which prevents
+        // the next login from working until the browser does a full
+        // page load to get a fresh session ID.
+        $_SESSION = array();
         wp_send_json_success();
         exit;
     }
