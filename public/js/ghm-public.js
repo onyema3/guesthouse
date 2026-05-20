@@ -317,6 +317,14 @@
       const $btn = $('#ghm-confirm-btn');
       const sym  = $('#ghm-currency-symbol').val() || '';
 
+      // Fail fast if the Paystack inline.js SDK didn't load, or if a v2
+      // script overwrote the global (v2 has no .setup method).
+      if (typeof PaystackPop === 'undefined' || typeof PaystackPop.setup !== 'function') {
+        this.showAlert('Paystack could not load. Please disable ad-blockers, refresh the page, and try again.', 'error');
+        this.updateConfirmBtn('paystack', sym + parseFloat($('#ghm-pb-total-amount').val()||0).toFixed(2));
+        return;
+      }
+
       const formData = {};
       $('#ghm-public-booking-form').serializeArray().forEach(({name, value}) => {
         formData[name] = value;
@@ -331,10 +339,16 @@
       $btn.prop('disabled', true).html('<span class="ghm-pub-spinner"></span> Initialising Payment…');
       this.clearAlerts();
 
-      $.post(ghmPublic.ajax_url, Object.assign({
-        action: 'ghm_paystack_init',
-        nonce : ghmPublic.nonce
-      }, formData))
+      $.ajax({
+        url     : ghmPublic.ajax_url,
+        type    : 'POST',
+        dataType: 'json',
+        timeout : 30000,
+        data    : Object.assign({
+          action: 'ghm_paystack_init',
+          nonce : ghmPublic.nonce
+        }, formData)
+      })
       .done(res => {
         if (!res.success) {
           this.showAlert((res.data ? res.data.message : '') || 'Could not initialise payment. Please try again.', 'error');
@@ -404,8 +418,11 @@
           this.updateConfirmBtn('paystack', sym + parseFloat(formData.total_amount||0).toFixed(2));
         }
       })
-      .fail(() => {
-        this.showAlert('Network error. Please check your connection and try again.', 'error');
+      .fail((jqXHR, textStatus) => {
+        const msg = textStatus === 'timeout'
+          ? 'Server is taking too long to respond. Please try again or choose Pay on Arrival.'
+          : 'Network error. Please check your connection and try again.';
+        this.showAlert(msg, 'error');
         $btn.prop('disabled', false);
         this.updateConfirmBtn('paystack', sym + parseFloat(formData.total_amount||0).toFixed(2));
       });
@@ -415,6 +432,14 @@
     initiateFlutterwavePayment() {
       const $btn    = $('#ghm-confirm-btn');
       const sym     = $('#ghm-currency-symbol').val() || '';
+
+      // Fail fast if the Flutterwave SDK didn't load.
+      if (typeof FlutterwaveCheckout === 'undefined') {
+        this.showAlert('Flutterwave could not load. Please disable ad-blockers, refresh the page, and try again.', 'error');
+        this.updateConfirmBtn('flutterwave', sym + parseFloat($('#ghm-pb-total-amount').val()||0).toFixed(2));
+        return;
+      }
+
       const formData = {};
       $('#ghm-public-booking-form').serializeArray().forEach(({name,value}) => { formData[name]=value; });
 
@@ -426,7 +451,13 @@
       $btn.prop('disabled',true).html('<span class="ghm-pub-spinner"></span> Initialising…');
       this.clearAlerts();
 
-      $.post(ghmPublic.ajax_url, Object.assign({action:'ghm_flw_init',nonce:ghmPublic.nonce}, formData))
+      $.ajax({
+        url     : ghmPublic.ajax_url,
+        type    : 'POST',
+        dataType: 'json',
+        timeout : 30000,
+        data    : Object.assign({action:'ghm_flw_init',nonce:ghmPublic.nonce}, formData)
+      })
       .done(res => {
         if (!res.success) {
           this.showAlert((res.data ? res.data.message : '')||'Could not initialise payment.','error');
@@ -477,7 +508,14 @@
           this.updateConfirmBtn('flutterwave', sym+parseFloat(formData.total_amount||0).toFixed(2));
         }
       })
-      .fail(()=>{ this.showAlert('Network error. Please try again.','error'); $btn.prop('disabled',false); });
+      .fail((jqXHR, textStatus) => {
+        const msg = textStatus === 'timeout'
+          ? 'Server is taking too long to respond. Please try again or choose Pay on Arrival.'
+          : 'Network error. Please try again.';
+        this.showAlert(msg,'error');
+        $btn.prop('disabled',false);
+        this.updateConfirmBtn('flutterwave', sym+parseFloat(formData.total_amount||0).toFixed(2));
+      });
     },
 
     showFlwSuccess(data, formData, sym) {

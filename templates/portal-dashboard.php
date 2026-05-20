@@ -326,9 +326,10 @@ $reviewed    = !empty($review);
 
 </div><!-- /ghm-portal-wrap -->
 
-<?php if (class_exists('GHM_Paystack') && GHM_Paystack::is_enabled()): ?>
-<script src="https://js.paystack.co/v2/inline.js"></script>
-<?php endif; ?>
-<?php if (class_exists('GHM_Flutterwave') && GHM_Flutterwave::is_enabled()): ?>
-<script src="https://checkout.flutterwave.com/v3.js"></script>
-<?php endif; ?>
+<?php
+// Paystack & Flutterwave SDKs are enqueued via wp_enqueue_script in
+// GHM_Guest_Portal::enqueue_portal_assets() / GHM_Paystack::maybe_enqueue() /
+// GHM_Flutterwave::maybe_enqueue(). Do NOT add hardcoded <script> tags here —
+// previous v2/inline.js tag was overwriting the v1 PaystackPop global and
+// breaking the v1 API used by ghm-public.js and ghm-portal.js.
+?>
